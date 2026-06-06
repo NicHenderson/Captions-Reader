@@ -1,0 +1,643 @@
+/* =====================================================================
+   Captions Reader — styles.css
+   Estética: "sala de proyección". Fondo casi negro, acentos en verde
+   menta, subtítulo centrado como sobre una pantalla de cine.
+
+   PALETA (respetada al 100%):
+     #1D1E18  -> fondo / tinta oscura
+     #6B8F71  -> verde apagado (bordes, textos secundarios)
+     #AAD2BA  -> verde claro (acentos)
+     #D9FFF5  -> menta muy claro (texto principal)
+     #B9F5D8  -> menta (resaltes, botones)
+   ===================================================================== */
+
+/* ---------- Variables globales (tokens de diseño) ---------- */
+:root {
+  --ink:        #1D1E18; /* fondo principal */
+  --moss:       #6B8F71; /* verde apagado  */
+  --sage:       #AAD2BA; /* verde claro    */
+  --frost:      #D9FFF5; /* texto claro    */
+  --mint:       #B9F5D8; /* menta resalte  */
+
+  /* Derivados con transparencia para profundidad (siguen siendo la paleta) */
+  --line:       rgba(170, 210, 186, 0.18); /* sage al 18% para bordes sutiles */
+  --glow:       rgba(185, 245, 216, 0.22); /* mint al 22% para halos          */
+
+  --radius:     20px;
+  --ease:       cubic-bezier(0.22, 1, 0.36, 1); /* salida suave, "cinemática" */
+
+  /* Tipografías */
+  --font-display: "Fraunces", Georgia, serif;
+  --font-body:    "Hanken Grotesk", system-ui, sans-serif;
+}
+
+/* ---------- Reset ligero y caja predecible ---------- */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html { height: 100%; }
+
+/* IMPORTANTE: una regla como ".reader { display: grid }" tiene más peso
+   que el "display:none" implícito del atributo [hidden], y por eso el
+   reproductor podía asomar al costado aun estando oculto. Esta regla
+   global garantiza que cualquier elemento con [hidden] desaparezca de
+   verdad. Al iniciar, así solo se ve la zona de carga. */
+[hidden] { display: none !important; }
+
+body {
+  min-height: 100%;
+  font-family: var(--font-body);
+  color: var(--frost);
+  /* Atmósfera: degradado radial muy sutil sobre el fondo base.
+     Se construye solo con tonos de la paleta. */
+  background:
+    radial-gradient(120% 80% at 50% -10%, rgba(107, 143, 113, 0.25), transparent 60%),
+    radial-gradient(90% 90% at 50% 120%, rgba(170, 210, 186, 0.10), transparent 55%),
+    var(--ink);
+  background-attachment: fixed;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  /* Centra verticalmente el contenido en pantallas altas */
+  justify-content: center;
+  gap: clamp(2rem, 6vh, 4rem);
+  padding: clamp(1.5rem, 5vw, 3rem);
+  overflow-x: hidden;
+}
+
+/* Capa de grano sutil: textura de ruido generada con un patrón SVG inline.
+   Da una sensación analógica/fílmica sin imágenes externas. */
+.grain {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0.05;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* Asegura que el contenido quede por encima del grano */
+.app-header,
+.stage { position: relative; z-index: 1; }
+
+/* ===================================================================
+   ENCABEZADO / MARCA
+   =================================================================== */
+.app-header {
+  text-align: center;
+  /* Animación de entrada al cargar la página */
+  animation: rise 0.8s var(--ease) both;
+}
+
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.7rem;
+}
+
+.brand__mark {
+  font-size: 1.6rem;
+  color: var(--mint);
+  /* Halo suave alrededor del glifo */
+  text-shadow: 0 0 18px var(--glow);
+}
+
+.brand__name {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: clamp(1.8rem, 5vw, 2.6rem);
+  letter-spacing: -0.01em;
+  color: var(--frost);
+}
+
+.brand__tagline {
+  margin-top: 0.4rem;
+  color: var(--moss);
+  font-size: 0.85rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+/* ===================================================================
+   ESCENARIO
+   =================================================================== */
+.stage {
+  width: 100%;
+  max-width: 920px;
+  display: flex;
+  justify-content: center;
+}
+
+/* ===================================================================
+   ESTADO 1 — ZONA DE CARGA
+   =================================================================== */
+.uploader {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+  animation: rise 0.8s var(--ease) both;
+  animation-delay: 0.1s;
+}
+
+/* Recuadro de "arrastrar y soltar" */
+.dropzone {
+  position: relative;
+  width: 100%;
+  min-height: 280px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  padding: 2.5rem;
+  cursor: pointer;
+  text-align: center;
+  border: 2px dashed var(--line);
+  border-radius: var(--radius);
+  background: rgba(170, 210, 186, 0.03);
+  transition: border-color 0.3s var(--ease),
+              background 0.3s var(--ease),
+              transform 0.3s var(--ease);
+}
+
+/* Estados hover y arrastre activo (clase añadida por JS: .is-dragover) */
+.dropzone:hover,
+.dropzone.is-dragover {
+  border-color: var(--mint);
+  background: rgba(185, 245, 216, 0.07);
+  transform: translateY(-2px);
+}
+
+.dropzone__icon {
+  font-size: 2.6rem;
+  line-height: 1;
+  color: var(--mint);
+  /* Rebote leve y continuo para invitar a la acción */
+  animation: float 2.6s ease-in-out infinite;
+}
+
+.dropzone__title {
+  font-family: var(--font-display);
+  font-size: 1.4rem;
+  color: var(--frost);
+}
+.dropzone__title strong { color: var(--mint); }
+
+.dropzone__hint {
+  font-size: 0.9rem;
+  color: var(--moss);
+}
+
+/* El input ocupa todo el recuadro pero es invisible: el aspecto lo da el label */
+.dropzone__input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+/* Mensaje de error */
+.uploader__error {
+  min-height: 1.2em;
+  color: var(--sage);
+  font-size: 0.9rem;
+  text-align: center;
+}
+.uploader__error.is-visible {
+  /* Pequeña sacudida para llamar la atención al fallar */
+  animation: shake 0.4s var(--ease);
+}
+
+/* ===================================================================
+   ESTADO 2 — CONTROLADOR DE SUBTÍTULOS
+   =================================================================== */
+.reader {
+  width: 100%;
+  display: grid;
+  /* Tres columnas: flecha · tarjeta · flecha */
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: clamp(0.8rem, 3vw, 1.8rem);
+  animation: rise 0.6s var(--ease) both;
+}
+
+/* El botón de reinicio se coloca debajo, centrado, ocupando las 3 columnas */
+.reset {
+  grid-column: 1 / -1;
+  justify-self: center;
+}
+
+/* ---------- Botones de navegación (flechas) ---------- */
+.nav {
+  width: clamp(48px, 7vw, 64px);
+  height: clamp(48px, 7vw, 64px);
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  font-size: 2rem;
+  font-family: var(--font-body);
+  color: var(--frost);
+  background: rgba(107, 143, 113, 0.15);
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  cursor: pointer;
+  transition: background 0.25s var(--ease),
+              transform 0.2s var(--ease),
+              color 0.25s var(--ease),
+              opacity 0.25s var(--ease);
+}
+
+.nav:hover:not(:disabled) {
+  background: var(--mint);
+  color: var(--ink);
+  transform: scale(1.08);
+  box-shadow: 0 0 24px var(--glow);
+}
+
+.nav:active:not(:disabled) { transform: scale(0.96); }
+
+/* Cuando no hay más subtítulos en esa dirección, el botón se desactiva */
+.nav:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+/* ---------- Tarjeta del subtítulo ---------- */
+.caption-card {
+  position: relative;
+  min-height: 240px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 1.4rem;
+  padding: clamp(1.5rem, 4vw, 2.5rem);
+  background: rgba(29, 30, 24, 0.6);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  /* Profundidad: sombra hacia abajo + halo interior tenue */
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45),
+              inset 0 1px 0 rgba(217, 255, 245, 0.06);
+  backdrop-filter: blur(6px);
+}
+
+/* Línea superior de metadatos */
+.caption-card__meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  font-size: 0.78rem;
+  letter-spacing: 0.06em;
+  color: var(--moss);
+}
+
+.caption-card__time {
+  font-variant-numeric: tabular-nums; /* dígitos de ancho fijo */
+}
+
+.caption-card__counter {
+  padding: 0.25rem 0.6rem;
+  color: var(--sage);
+  background: rgba(170, 210, 186, 0.10);
+  border-radius: 999px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* El texto del subtítulo: protagonista absoluto.
+   Es cliqueable (copia al portapapeles), por eso usa cursor de mano. */
+.caption-card__text {
+  font-size: clamp(1.4rem, 3.4vw, 2.1rem);
+  line-height: 1.4;
+  font-weight: 500;
+  text-align: center;
+  color: var(--frost);
+  text-wrap: balance; /* reparte mejor las líneas */
+  white-space: pre-line; /* respeta los saltos internos del subtítulo */
+  cursor: pointer;
+  border-radius: 12px;
+  padding: 0.4rem 0.6rem;
+  transition: background 0.2s var(--ease);
+}
+
+/* Realce sutil al pasar el cursor, para reforzar que es cliqueable */
+.caption-card__text:hover {
+  background: rgba(185, 245, 216, 0.07);
+}
+
+/* Animación reutilizable que JS dispara en cada cambio de subtítulo */
+.caption-card__text.is-changing {
+  animation: swap 0.35s var(--ease);
+}
+
+/* ---------- Fila de acciones (Copiar / Saltar a) ---------- */
+.caption-card__actions {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+/* Botones de acción de la tarjeta (mismo estilo para Copiar y Saltar a) */
+.action {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  font-family: var(--font-body);
+  font-size: 0.85rem;
+  color: var(--sage);
+  background: rgba(170, 210, 186, 0.08);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  cursor: pointer;
+  transition: color 0.25s var(--ease),
+              background 0.25s var(--ease),
+              border-color 0.25s var(--ease);
+}
+.action:hover {
+  color: var(--ink);
+  background: var(--mint);
+  border-color: var(--mint);
+}
+.action__icon { display: block; }
+
+/* Estado momentáneo tras copiar con éxito (clase añadida por JS) */
+.action.is-copied {
+  color: var(--ink);
+  background: var(--mint);
+  border-color: var(--mint);
+}
+
+/* ---------- Barra de progreso ---------- */
+.progress {
+  width: 100%;
+  height: 4px;
+  background: rgba(170, 210, 186, 0.12);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.progress__bar {
+  height: 100%;
+  width: 0%; /* lo actualiza JS */
+  background: linear-gradient(90deg, var(--sage), var(--mint));
+  border-radius: 999px;
+  transition: width 0.4s var(--ease);
+}
+
+/* ---------- Botón de reinicio ---------- */
+.reset {
+  margin-top: 0.5rem;
+  padding: 0.7rem 1.4rem;
+  font-family: var(--font-body);
+  font-size: 0.9rem;
+  color: var(--sage);
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  cursor: pointer;
+  transition: color 0.25s var(--ease),
+              border-color 0.25s var(--ease),
+              background 0.25s var(--ease);
+}
+.reset:hover {
+  color: var(--ink);
+  background: var(--sage);
+  border-color: var(--sage);
+}
+
+/* ===================================================================
+   ANIMACIONES (keyframes)
+   =================================================================== */
+@keyframes rise {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-8px); }
+}
+
+@keyframes swap {
+  from { opacity: 0; transform: translateY(8px); filter: blur(2px); }
+  to   { opacity: 1; transform: translateY(0); filter: blur(0); }
+}
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  25%      { transform: translateX(-6px); }
+  75%      { transform: translateX(6px); }
+}
+
+/* Respeta la preferencia del sistema de reducir movimiento */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+
+/* ===================================================================
+   MODAL — Saltar a marca de tiempo
+   =================================================================== */
+.modal {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  padding: 1.5rem;
+}
+
+/* Fondo oscurecido (capa de overlay) */
+.modal__overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(13, 14, 11, 0.7);
+  backdrop-filter: blur(3px);
+  animation: fade 0.25s var(--ease);
+}
+
+/* Cuadro de diálogo */
+.modal__dialog {
+  position: relative; /* por encima del overlay */
+  width: 100%;
+  max-width: 380px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+  padding: 1.8rem;
+  background: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: 0 30px 70px rgba(0, 0, 0, 0.55);
+  animation: rise 0.3s var(--ease) both;
+}
+
+.modal__title {
+  font-family: var(--font-display);
+  font-size: 1.3rem;
+  color: var(--frost);
+}
+
+.modal__hint {
+  font-size: 0.85rem;
+  color: var(--moss);
+}
+.modal__hint strong { color: var(--sage); }
+
+/* Botones del modal */
+.modal__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.6rem;
+  margin-top: 0.4rem;
+}
+.modal__btn {
+  padding: 0.6rem 1.2rem;
+  font-family: var(--font-body);
+  font-size: 0.9rem;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background 0.2s var(--ease),
+              color 0.2s var(--ease),
+              border-color 0.2s var(--ease);
+}
+/* "Cancelar": discreto */
+.modal__btn--ghost {
+  color: var(--sage);
+  background: transparent;
+  border: 1px solid var(--line);
+}
+.modal__btn--ghost:hover {
+  color: var(--frost);
+  border-color: var(--sage);
+}
+/* "Aceptar": destacado en menta */
+.modal__btn--solid {
+  color: var(--ink);
+  background: var(--mint);
+  border: 1px solid var(--mint);
+  font-weight: 600;
+}
+.modal__btn--solid:hover { background: var(--sage); border-color: var(--sage); }
+
+@keyframes fade {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* ---------- Selector de tiempo estilo iOS (ruedas 3D) ---------- */
+.picker {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.2rem;
+  height: 220px;                 /* alto del contenedor (coincide con WHEEL_HEIGHT en JS) */
+  margin: 0.4rem 0;
+  padding: 0 0.8rem;
+  border-radius: 16px;
+  /* Glassmorphism: fondo translúcido con desenfoque */
+  background: rgba(170, 210, 186, 0.06);
+  border: 1px solid var(--line);
+  backdrop-filter: blur(10px);
+  overflow: hidden;
+  /* Perspectiva para que los rotateX de los números tengan profundidad real */
+  perspective: 1000px;
+  /* Difuminado de los bordes superior/inferior para fundir las ruedas */
+  -webkit-mask-image: linear-gradient(to bottom,
+      transparent 0%, #000 14%, #000 86%, transparent 100%);
+  mask-image: linear-gradient(to bottom,
+      transparent 0%, #000 14%, #000 86%, transparent 100%);
+  touch-action: none; /* evita el scroll de la página al arrastrar */
+  /* Impide seleccionar los números al deslizar (y el menú contextual). */
+  user-select: none;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+/* Zona de enfoque central: franja fija en Y=0 con dos líneas finas */
+.picker__focus {
+  position: absolute;
+  left: 0.5rem;
+  right: 0.5rem;
+  top: 50%;
+  height: 40px;                  /* coincide con ITEM_HEIGHT en JS */
+  transform: translateY(-50%);
+  border-top: 0.5px solid rgba(217, 255, 245, 0.2);
+  border-bottom: 0.5px solid rgba(217, 255, 245, 0.2);
+  background: rgba(217, 255, 245, 0.04);
+  border-radius: 8px;
+  pointer-events: none;          /* deja pasar los gestos a las ruedas */
+  z-index: 2;
+}
+
+/* Cada rueda (rodillo cilíndrico independiente) */
+.wheel {
+  position: relative;
+  width: 60px;
+  height: 100%;
+  transform-style: preserve-3d;  /* respeta el 3D de los números hijos */
+  cursor: grab;
+  outline: none;
+}
+.wheel:active { cursor: grabbing; }
+
+/* Cada número impreso en el cilindro */
+.wheel__item {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 40px;                  /* ITEM_HEIGHT */
+  margin-top: -20px;             /* centra verticalmente (mitad de la altura) */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.5rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--frost);
+  backface-visibility: hidden;
+  transform-origin: center center;
+  will-change: transform, opacity;
+}
+/* El número seleccionado (en el centro) resalta en menta */
+.wheel__item.is-selected { color: var(--mint); }
+
+/* Separadores ":" entre ruedas */
+.picker__sep {
+  font-size: 1.5rem;
+  color: var(--sage);
+  z-index: 3;
+  padding-bottom: 2px;
+}
+
+/* ===================================================================
+   RESPONSIVE — En móvil, las flechas pasan debajo de la tarjeta
+   =================================================================== */
+@media (max-width: 560px) {
+  .reader {
+    grid-template-columns: 1fr 1fr; /* dos botones lado a lado */
+    grid-template-areas:
+      "card card"
+      "prev next"
+      "reset reset";
+  }
+  .caption-card { grid-area: card; }
+  .nav--prev    { grid-area: prev; justify-self: stretch; border-radius: 14px; width: 100%; }
+  .nav--next    { grid-area: next; justify-self: stretch; border-radius: 14px; width: 100%; }
+  .reset        { grid-area: reset; }
+}

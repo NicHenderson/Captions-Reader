@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <!-- Diseño responsive: la app se adapta a móvil y escritorio -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Captions Reader</title>
+
+  <!-- Tipografías: Fraunces (display, carácter cinematográfico) + Hanken Grotesk (cuerpo legible) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600&family=Hanken+Grotesk:wght@400;500;600&display=swap"
+    rel="stylesheet"
+  />
+
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="icon" type="image/png" href="CaptionsReader-Icon.ico">
+</head>
+
+<body>
+  <!-- Capa decorativa de grano/textura para dar atmósfera (puramente visual) -->
+  <div class="grain" aria-hidden="true"></div>
+
+  <!-- ============ ENCABEZADO / MARCA ============ -->
+  <header class="app-header">
+    <div class="brand">
+      <!-- Glifo decorativo tipo "marcador de pantalla" -->
+      <span class="brand__mark" aria-hidden="true">❒</span>
+      <h1 class="brand__name">Captions&nbsp;Reader</h1>
+    </div>
+    <p class="brand__tagline" id="tagline">Lector de subtítulos · formato .srt</p>
+  </header>
+
+  <!-- ============ ESCENARIO PRINCIPAL ============ -->
+  <main class="stage">
+
+    <!-- ---------- ESTADO 1: ZONA DE CARGA ----------
+         Es lo único interactivo al entrar/refrescar la página. -->
+    <section class="uploader" id="uploader" aria-label="Cargar archivo de subtítulos">
+      <!--
+        El <label> envuelve el <input file>. Así, todo el recuadro
+        es clicable y además sirve como objetivo para arrastrar y soltar.
+      -->
+      <label class="dropzone" id="dropzone" for="fileInput">
+        <span class="dropzone__icon" aria-hidden="true">↧</span>
+        <span class="dropzone__title">Arrastra tu archivo <strong>.srt</strong></span>
+        <span class="dropzone__hint">o haz clic para buscarlo en tu equipo</span>
+
+        <!-- Input real (se estiliza desde CSS; sigue siendo accesible) -->
+        <input
+          class="dropzone__input"
+          type="file"
+          id="fileInput"
+          accept=".srt,text/plain"
+        />
+      </label>
+
+      <!-- Zona reservada para mensajes de error (vacía por defecto).
+           role="alert" hace que los lectores de pantalla la anuncien. -->
+      <p class="uploader__error" id="error" role="alert"></p>
+    </section>
+
+    <!-- ---------- ESTADO 2: CONTROLADOR DE SUBTÍTULOS ----------
+         Inicia oculto con "hidden". JS lo revela tras cargar el .srt. -->
+    <section class="reader" id="reader" aria-label="Controlador de subtítulos" hidden>
+
+      <!-- Botón anterior (flecha izquierda) -->
+      <button class="nav nav--prev" id="prevBtn" type="button" aria-label="Subtítulo anterior">
+        <span aria-hidden="true">‹</span>
+      </button>
+
+      <!-- Tarjeta central: aquí vive el subtítulo actual -->
+      <article class="caption-card">
+        <!-- Metadatos: marca de tiempo + contador (índice / total) -->
+        <div class="caption-card__meta">
+          <span class="caption-card__time" id="timecode">00:00:00,000 → 00:00:00,000</span>
+          <span class="caption-card__counter" id="counter">0 / 0</span>
+        </div>
+
+        <!-- Texto del subtítulo. aria-live="polite": al cambiar, se anuncia. -->
+        <p class="caption-card__text" id="captionText" aria-live="polite"></p>
+
+        <!-- Barra de progreso a lo largo de la línea de tiempo del archivo -->
+        <div class="progress" role="progressbar" aria-label="Progreso del archivo">
+          <div class="progress__bar" id="progressBar"></div>
+        </div>
+
+        <!-- Fila de acciones: copiar y saltar a una marca de tiempo -->
+        <div class="caption-card__actions">
+          <!-- Botón para copiar el texto del subtítulo actual al portapapeles -->
+          <button class="action" id="copyBtn" type="button" aria-label="Copiar subtítulo actual">
+            <!-- Ícono de portapapeles (SVG inline, sin dependencias) -->
+            <svg class="action__icon" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+              <rect x="9" y="9" width="11" height="11" rx="2"
+                    fill="none" stroke="currentColor" stroke-width="2"/>
+              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"
+                    fill="none" stroke="currentColor" stroke-width="2"/>
+            </svg>
+            <span class="action__label" id="copyLabel">Copiar</span>
+          </button>
+
+          <!-- Botón para abrir el modal de salto por marca de tiempo -->
+          <button class="action" id="jumpBtn" type="button" aria-label="Saltar a una marca de tiempo">
+            <!-- Ícono de reloj (SVG inline) -->
+            <svg class="action__icon" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+              <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/>
+              <path d="M12 7v5l3 2" fill="none" stroke="currentColor"
+                    stroke-width="2" stroke-linecap="round"/>
+            </svg>
+            <span class="action__label">Saltar a</span>
+          </button>
+        </div>
+      </article>
+
+      <!-- Botón siguiente (flecha derecha) -->
+      <button class="nav nav--next" id="nextBtn" type="button" aria-label="Subtítulo siguiente">
+        <span aria-hidden="true">›</span>
+      </button>
+
+      <!-- Acción secundaria: volver al estado de carga -->
+      <button class="reset" id="resetBtn" type="button">↺ Cargar otro archivo</button>
+    </section>
+
+  </main>
+
+  <!-- ============ MODAL: SALTAR A MARCA DE TIEMPO ============
+       Inicia oculto con "hidden". role="dialog" + aria-modal para accesibilidad.
+       El overlay y el cuadro son hermanos para poder cerrar al hacer clic fuera. -->
+  <div class="modal" id="jumpModal" role="dialog" aria-modal="true" aria-labelledby="jumpTitle" hidden>
+    <!-- Fondo oscuro semitransparente; un clic aquí cierra el modal -->
+    <div class="modal__overlay" id="jumpOverlay"></div>
+
+    <!-- Cuadro de diálogo -->
+    <div class="modal__dialog">
+      <h2 class="modal__title" id="jumpTitle">Saltar a marca de tiempo</h2>
+      <p class="modal__hint">Gira las ruedas para elegir <strong>hora&nbsp;:&nbsp;min&nbsp;:&nbsp;seg</strong></p>
+
+      <!-- Selector de tiempo estilo iOS (tres rodillos cilíndricos) -->
+      <div class="picker" id="timePicker">
+        <!-- Zona de enfoque central (franja con líneas y desenfoque) -->
+        <div class="picker__focus" aria-hidden="true"></div>
+
+        <!-- Cada .wheel recibe sus números por JavaScript -->
+        <div class="wheel" id="wheelHours" data-unit="horas"
+             role="slider" aria-label="Horas" tabindex="0"></div>
+        <span class="picker__sep" aria-hidden="true">:</span>
+        <div class="wheel" id="wheelMinutes" data-unit="minutos"
+             role="slider" aria-label="Minutos" tabindex="0"></div>
+        <span class="picker__sep" aria-hidden="true">:</span>
+        <div class="wheel" id="wheelSeconds" data-unit="segundos"
+             role="slider" aria-label="Segundos" tabindex="0"></div>
+      </div>
+
+      <!-- Botones de acción -->
+      <div class="modal__actions">
+        <button class="modal__btn modal__btn--ghost" id="jumpCancel" type="button">Cancelar</button>
+        <button class="modal__btn modal__btn--solid" id="jumpAccept" type="button">Aceptar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Script clásico con "defer": el DOM ya está listo al ejecutarse y,
+       al no usar import/export, funciona al abrir el .html directamente
+       (sin servidor local ni problemas de CORS por file://). -->
+  <script src="app.js" defer></script>
+</body>
+</html>
