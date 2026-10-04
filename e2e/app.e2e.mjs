@@ -184,18 +184,36 @@ test("al abrir, el foco entra en la rueda de horas y Tab no se escapa", async ()
   }
 });
 
-test("ruedas con teclado: ↑/↓, AvPág/RePág, Inicio/Fin y valores ARIA", async () => {
+test("ruedas con teclado: la selección sigue a la flecha (↓ número de abajo, ↑ el de arriba)", async () => {
   await load("formatos-variados.srt");
   await page.click("#jumpBtn");
   await page.focus("#wheelMinutes");
   await page.keyboard.press("ArrowUp");
-  await page.keyboard.press("ArrowUp");
+  assert.equal(await wheelValue("wheelMinutes"), "0", "↑ en 00 no baja de 0");
+  await page.keyboard.press("ArrowDown");
+  await page.keyboard.press("ArrowDown");
   assert.equal(await wheelValue("wheelMinutes"), "2");
   assert.equal(await page.getAttribute("#wheelMinutes", "aria-valuetext"), "02 minutos");
-  await page.keyboard.press("ArrowDown");
+
+  // Comprobación visual: al terminar la animación, el "01" (número anterior)
+  // queda POR ENCIMA del centro y el "03" (siguiente) por debajo.
+  // La física del resorte avanza por fotograma: se espera a que se detenga.
+  await page.waitForFunction(() => minutesWheel.mode === "idle");
+  const offsetY = (n) => page.evaluate((i) => {
+    const wheel = document.getElementById("wheelMinutes").getBoundingClientRect();
+    const item = document.querySelectorAll("#wheelMinutes .wheel__item")[i].getBoundingClientRect();
+    return (item.top + item.height / 2) - (wheel.top + wheel.height / 2);
+  }, n);
+  assert.ok(Math.abs(await offsetY(2)) < 2, "el 02 está centrado");
+  assert.ok(await offsetY(1) < -20, "el 01 está arriba");
+  assert.ok(await offsetY(3) > 20, "el 03 está abajo");
+
+  await page.keyboard.press("ArrowUp");
   assert.equal(await wheelValue("wheelMinutes"), "1");
-  await page.keyboard.press("PageUp");
+  await page.keyboard.press("PageDown");
   assert.equal(await wheelValue("wheelMinutes"), "6");
+  await page.keyboard.press("PageUp");
+  assert.equal(await wheelValue("wheelMinutes"), "1");
   await page.keyboard.press("End");
   assert.equal(await wheelValue("wheelMinutes"), "59");
   await page.keyboard.press("Home");
@@ -207,7 +225,7 @@ test("Enter sobre 'Cancelar' cancela (no salta) y devuelve el foco a 'Saltar a'"
   await page.focus("#jumpBtn");
   await page.keyboard.press("Enter");
   await page.focus("#wheelMinutes");
-  await page.keyboard.press("ArrowUp");
+  await page.keyboard.press("ArrowDown");
   await page.focus("button[value=cancel]");
   await page.keyboard.press("Enter");
   await settle();
@@ -220,7 +238,7 @@ test("Enter sobre una rueda confirma el salto", async () => {
   await load("formatos-variados.srt");
   await page.click("#jumpBtn");
   await page.focus("#wheelMinutes");
-  await page.keyboard.press("ArrowUp"); // 00:01:00
+  await page.keyboard.press("ArrowDown"); // 00:01:00
   await page.keyboard.press("Enter");
   await settle();
   assert.equal(await counter(), "3 / 4");
@@ -231,8 +249,8 @@ test("'Aceptar' salta al cue más cercano", async () => {
   await load("formatos-variados.srt");
   await page.click("#jumpBtn");
   await page.focus("#wheelMinutes");
-  await page.keyboard.press("ArrowUp");
-  await page.keyboard.press("ArrowUp"); // 00:02:00
+  await page.keyboard.press("ArrowDown");
+  await page.keyboard.press("ArrowDown"); // 00:02:00
   await page.click("button[value=ok]");
   await settle();
   assert.equal(await counter(), "4 / 4");
@@ -246,7 +264,7 @@ test("Escape cancela aunque el salto anterior se hubiera aceptado", async () => 
   await page.click("#nextBtn"); // 2/4
   await page.click("#jumpBtn");
   await page.focus("#wheelMinutes");
-  await page.keyboard.press("ArrowUp");
+  await page.keyboard.press("ArrowDown");
   await page.keyboard.press("Escape");
   await settle();
   assert.equal(await modalOpen(), false);

@@ -196,6 +196,8 @@ function showCopyFeedback(success) {
      · Física de inercia con fricción al lanzar (flick).
      · Anclaje magnético (snap) con animación de resorte al detenerse.
      · Teclado: ↑/↓ (±1), RePág/AvPág (±5), Inicio/Fin (extremos).
+       La tecla mueve la selección en su dirección: ↑ elige el número de
+       arriba (menor) y ↓ el de abajo (mayor), igual que la rueda del ratón.
    Cada instancia es independiente del resto y expone su valor a los
    lectores de pantalla (aria-valuenow / aria-valuetext).
    --------------------------------------------------------------------- */
@@ -441,9 +443,10 @@ class WheelPicker {
     }, { passive: false });
 
     // Teclado (la rueda tiene role="slider" y tabindex="0").
-    // Igual que en <input type="time"> y en las pautas ARIA: ↑ incrementa.
+    // Los números mayores están DEBAJO, así que ↑/RePág eligen los de arriba
+    // (restan) y ↓/AvPág los de abajo (suman): lo que se ve sigue a la tecla.
     this.el.addEventListener("keydown", (e) => {
-      const steps = { ArrowUp: 1, ArrowDown: -1, PageUp: 5, PageDown: -5 };
+      const steps = { ArrowUp: -1, ArrowDown: 1, PageUp: -5, PageDown: 5 };
       let next;
       if (e.key in steps) next = this.getValue() + steps[e.key];
       else if (e.key === "Home") next = 0;
