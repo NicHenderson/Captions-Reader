@@ -14,6 +14,8 @@ import { test, before, after, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import path from "node:path";
+import http from "node:http";
+import fs from "node:fs";
 import { chromium } from "playwright";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -36,6 +38,20 @@ after(async () => {
 beforeEach(async () => {
   context = await browser.newContext();
   await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  // Cuenta aperturas del diálogo y eventos "close" ya procesados por la app
+  // (su oyente se registró antes que este), para esperar sin tiempos fijos.
+  await context.addInitScript(() => {
+    window.__dialogOpens = 0;
+    window.__dialogCloses = 0;
+    const showModal = HTMLDialogElement.prototype.showModal;
+    HTMLDialogElement.prototype.showModal = function () {
+      window.__dialogOpens++;
+      return showModal.call(this);
+    };
+    document.addEventListener("DOMContentLoaded", () => {
+      document.getElementById("jumpModal")?.addEventListener("close", () => { window.__dialogCloses++; });
+    });
+  });
   page = await context.newPage();
   pageErrors = [];
   page.on("pageerror", (error) => pageErrors.push(error.message));
@@ -59,8 +75,18 @@ async function load(name) {
   await page.waitForSelector("#reader:not([hidden])");
 }
 
-// El evento "close" de <dialog> se despacha en una tarea posterior al cierre.
-const settle = () => page.waitForTimeout(100);
+// El evento "close" de <dialog> se despacha en una tarea posterior al cierre:
+// se espera a que la app haya procesado el cierre de cada apertura.
+const settle = () => page.waitForFunction(() =>
+  !document.getElementById("jumpModal").open && window.__dialogCloses === window.__dialogOpens);
+
+// Reloj simulado y PAUSADO: el tiempo solo avanza con page.clock.runFor().
+// (Tras install() el reloj sigue corriendo en tiempo real hasta pausarlo.)
+async function gotoWithPausedClock() {
+  await page.clock.install({ time: new Date("2026-01-01T00:00:00Z") });
+  await page.goto(APP_URL);
+  await page.clock.pauseAt(new Date("2026-01-01T00:00:30Z"));
+}
 
 /* ---------- Carga y codificación ---------- */
 
@@ -141,7 +167,7 @@ test("teclado: con Tab sobre '‹', Espacio activa ese botón (retrocede)", asyn
   await load("formatos-variados.srt");
   await page.click("#nextBtn");
   await page.click("#nextBtn"); // 3/4
-  await page.focus("#copyBtn");
+  await page.focus("#playBtn"); // primer control de la tarjeta
   await page.keyboard.press("Shift+Tab");
   assert.equal(await activeId(), "prevBtn");
   await page.keyboard.press("Space");
@@ -391,4 +417,520 @@ test("anillo: se oculta al salir de las ruedas con Tab y vuelve con Shift+Tab", 
   await page.keyboard.press("Shift+Tab");
   assert.ok(await ringShown());
   assert.equal(await engagedId(), "wheelSeconds");
+});
+
+/* ---------- Funcionalidad: reanudar + recientes (IndexedDB) ---------- */
+
+const recentItems = () => page.locator("#recentsList .recents__open");
+// La posición se guarda agrupada (400 ms) o al volver a la zona de carga.
+const backToUploader = async () => {
+  await page.click("#resetBtn");
+  await page.waitForSelector("#recents:not([hidden])");
+};
+
+test("recientes: tras recargar la página, el archivo aparece con su posición", async () => {
+  await load("formatos-variados.srt");
+  await page.click("#nextBtn");
+  await page.click("#nextBtn"); // 3/4
+  await page.waitForTimeout(600); // guardado agrupado
+  await page.reload();
+  await page.waitForSelector("#recents:not([hidden])");
+  assert.equal(await recentItems().count(), 1);
+  const label = await recentItems().first().getAttribute("aria-label");
+  assert.match(label, /formatos-variados.*Subtítulo 3 de 4/);
+  assert.match(await recentItems().first().textContent(), /3 \/ 4/);
+});
+
+test("recientes: reabrir continúa donde se dejó y el toast permite empezar de cero", async () => {
+  await load("formatos-variados.srt");
+  await page.keyboard.press("ArrowRight");
+  await page.keyboard.press("ArrowRight"); // 3/4
+  await backToUploader();
+  await recentItems().first().click();
+  await page.waitForSelector("#reader:not([hidden])");
+  await page.waitForFunction(() => document.getElementById("counter").textContent === "3 / 4");
+  assert.match(await page.textContent("#toastText"), /Continuando donde lo dejaste · 3 \/ 4/);
+  await page.click("#toastAction");
+  assert.equal(await counter(), "1 / 4");
+  assert.ok(await page.isHidden("#toast"));
+});
+
+test("recientes: volver a cargar el MISMO archivo desde el disco también reanuda", async () => {
+  await load("formatos-variados.srt");
+  await page.keyboard.press("ArrowRight"); // 2/4
+  await backToUploader();
+  await load("formatos-variados.srt");
+  await page.waitForFunction(() => document.getElementById("counter").textContent === "2 / 4");
+});
+
+test("recientes: la × quita el archivo y el foco no se pierde", async () => {
+  await load("formatos-variados.srt");
+  await backToUploader();
+  await load("latin1-windows1252.srt");
+  await backToUploader();
+  await page.waitForFunction(() => document.querySelectorAll("#recentsList li").length === 2);
+  // El más reciente va primero.
+  assert.match(await recentItems().first().textContent(), /latin1/);
+  await page.locator(".recents__remove").first().focus();
+  await page.keyboard.press("Enter");
+  await page.waitForFunction(() => document.querySelectorAll("#recentsList li").length === 1);
+  assert.equal(await page.evaluate(() => document.activeElement.className), "recents__open");
+  await page.locator(".recents__remove").first().click();
+  await page.waitForSelector("#recents", { state: "hidden" });
+});
+
+test("recientes: se conservan como máximo 8 archivos", async () => {
+  for (let i = 1; i <= 9; i++) {
+    await page.setInputFiles("#fileInput", {
+      name: `serie.S01E0${i}.srt`, mimeType: "text/plain",
+      buffer: Buffer.from(`1\n00:00:01,000 --> 00:00:02,000\nEpisodio ${i}\n`),
+    });
+    await page.waitForSelector("#reader:not([hidden])");
+    await page.waitForTimeout(150);
+    await page.click("#resetBtn");
+  }
+  await page.waitForTimeout(300);
+  await page.reload();
+  await page.waitForSelector("#recents:not([hidden])");
+  assert.equal(await recentItems().count(), 8);
+  assert.doesNotMatch(await page.textContent("#recentsList"), /episodio 1\b/i, "el más antiguo se descarta");
+});
+
+/* ---------- Funcionalidad: reproducción temporizada ----------
+   Se usa el reloj simulado de Playwright: el tiempo solo avanza con
+   page.clock.runFor(), así las pruebas son exactas en cualquier máquina.
+   reproduccion.srt: Uno 1–2 s · Dos 3–4 s · Tres 4–5 s · Cuatro 8–9 s */
+
+async function loadWithFakeClock(name) {
+  await gotoWithPausedClock();
+  await load(name);
+}
+const isGap = () => page.evaluate(() => document.getElementById("captionText").classList.contains("is-gap"));
+
+test("reproducción: avanza con los tiempos reales, atenúa los huecos y se detiene al final", async () => {
+  await loadWithFakeClock("reproduccion.srt");
+  await page.click("#playBtn");
+  assert.equal(await page.textContent("#playLabel"), "Pausar");
+  assert.ok(await page.isVisible("#pauseIcon"), "icono de pausa visible");
+  assert.ok(await page.isHidden("#playIcon"), "icono de play oculto");
+  assert.ok(await page.isVisible("#playClock"));
+
+  await page.clock.runFor(800);   // 1,8 s: dentro de "Uno"
+  assert.equal(await counter(), "1 / 4");
+  assert.equal(await isGap(), false);
+  await page.clock.runFor(700);   // 2,5 s: hueco entre "Uno" y "Dos"
+  assert.equal(await counter(), "1 / 4");
+  assert.equal(await isGap(), true);
+  await page.clock.runFor(600);   // 3,1 s
+  assert.equal(await counter(), "2 / 4");
+  assert.equal(await isGap(), false);
+  assert.equal(await page.textContent("#playClock"), "00:00:03");
+  await page.clock.runFor(1000);  // 4,1 s
+  assert.equal(await counter(), "3 / 4");
+  await page.clock.runFor(4000);  // 8,1 s
+  assert.equal(await caption(), "Cuatro");
+  await page.clock.runFor(1500);  // 9,6 s: terminó
+  assert.equal(await page.textContent("#playLabel"), "Reproducir");
+  assert.ok(await page.isHidden("#playClock"));
+
+  // Reproducir de nuevo al terminar vuelve a empezar.
+  await page.click("#playBtn");
+  assert.equal(await counter(), "1 / 4");
+});
+
+test("reproducción: la velocidad 2× va el doble de rápido y se recuerda", async () => {
+  await loadWithFakeClock("reproduccion.srt");
+  await page.selectOption("#speedSelect", "2");
+  await page.click("#playBtn");
+  await page.clock.runFor(1100);  // 1 s + 2,2 s = 3,2 s de subtítulos
+  assert.equal(await counter(), "2 / 4");
+  await page.reload();
+  assert.equal(await page.inputValue("#speedSelect"), "2");
+});
+
+test("reproducción: pausar detiene el avance y P alterna", async () => {
+  await loadWithFakeClock("reproduccion.srt");
+  await page.keyboard.press("p");
+  await page.clock.runFor(500);
+  await page.keyboard.press("p");
+  assert.equal(await page.textContent("#playLabel"), "Reproducir");
+  await page.clock.runFor(5000);
+  assert.equal(await counter(), "1 / 4", "en pausa no avanza");
+  await page.keyboard.press("p");
+  await page.clock.runFor(1000);   // continúa desde 1,5 s -> 2,5 s
+  assert.equal(await counter(), "1 / 4");
+  await page.clock.runFor(700);    // 3,2 s
+  assert.equal(await counter(), "2 / 4");
+});
+
+test("reproducción: moverse a mano continúa desde el subtítulo elegido", async () => {
+  await loadWithFakeClock("reproduccion.srt");
+  await page.click("#playBtn");
+  await page.clock.runFor(200);
+  await page.keyboard.press("ArrowRight"); // "Dos" (3 s)
+  await page.keyboard.press("ArrowRight"); // "Tres" (4 s)
+  assert.equal(await counter(), "3 / 4");
+  await page.clock.runFor(3000);           // 7 s: hueco tras "Tres"
+  assert.equal(await counter(), "3 / 4");
+  assert.equal(await isGap(), true);
+  await page.clock.runFor(1200);           // 8,2 s
+  assert.equal(await counter(), "4 / 4");
+});
+
+test("reproducción: con el campo de búsqueda enfocado, P se escribe y no reproduce", async () => {
+  await load("reproduccion.srt");
+  await page.click("#transcriptBtn");
+  await page.focus("#transcriptSearch");
+  await page.keyboard.type("p");
+  assert.equal(await page.inputValue("#transcriptSearch"), "p");
+  assert.equal(await page.textContent("#playLabel"), "Reproducir");
+});
+
+/* ---------- Funcionalidad: transcripción con búsqueda ---------- */
+
+const visibleRows = () => page.locator(".transcript__row:visible");
+const currentRowText = () => page.textContent('.transcript__row[aria-current="true"] .transcript__text');
+const searchFor = async (text) => {
+  await page.fill("#transcriptSearch", text);
+  await page.waitForTimeout(250); // debounce de 150 ms
+};
+
+test("transcripción: lista completa, sigue al subtítulo actual y un clic salta", async () => {
+  await load("transcripcion.srt");
+  await page.click("#transcriptBtn");
+  assert.equal(await page.getAttribute("#transcriptBtn", "aria-expanded"), "true");
+  assert.equal(await visibleRows().count(), 5);
+  assert.equal(await page.textContent("#transcriptCount"), "5 subtítulos");
+  assert.equal(await currentRowText(), "Primera línea del diálogo");
+  await page.click("#nextBtn");
+  assert.match(await currentRowText(), /texto raro/);
+  await page.locator(".transcript__row").nth(3).click();
+  assert.equal(await counter(), "4 / 5");
+  assert.equal(await caption(), "Nada que ver");
+});
+
+test("transcripción: el texto de los subtítulos nunca se interpreta como HTML", async () => {
+  await load("transcripcion.srt");
+  await page.click("#transcriptBtn");
+  await searchFor("img");
+  assert.equal(await page.locator("#transcript img").count(), 0, "ni en la lista completa ni en los resultados");
+  assert.equal(await page.evaluate(() => window.__xss), undefined);
+  assert.match(await page.textContent("#transcriptResults"), /<img src=x onerror="window.__xss=1"> texto raro/);
+  assert.match(await page.textContent("#transcriptList"), /<img src=x onerror="window.__xss=1"> texto raro/);
+});
+
+test("transcripción: búsqueda sin tildes ni mayúsculas, con resaltado", async () => {
+  await load("transcripcion.srt");
+  await page.keyboard.press("/");
+  assert.equal(await activeId(), "transcriptSearch", "/ abre el panel y enfoca la búsqueda");
+  await searchFor("linea");
+  assert.equal(await page.textContent("#transcriptCount"), "3 resultados");
+  assert.equal(await visibleRows().count(), 3);
+  assert.deepEqual(await page.locator("#transcriptResults mark").allTextContents(), ["línea", "LÍNEA", "línea"]);
+
+  await searchFor("zzz");
+  assert.equal(await page.textContent("#transcriptCount"), "Sin resultados");
+  assert.equal(await visibleRows().count(), 0);
+  assert.match(await page.textContent(".transcript__empty"), /Sin resultados para «zzz»/);
+});
+
+test("transcripción: Enter / Shift+Enter recorren los resultados; Escape borra y cierra", async () => {
+  await load("transcripcion.srt");
+  await page.keyboard.press("/");
+  await searchFor("línea");
+  await page.keyboard.press("Enter");
+  assert.equal(await counter(), "3 / 5", "siguiente resultado tras el actual (1)");
+  await page.keyboard.press("Enter");
+  assert.equal(await counter(), "5 / 5");
+  await page.keyboard.press("Enter");
+  assert.equal(await counter(), "1 / 5", "vuelve al principio");
+  await page.keyboard.press("Shift+Enter");
+  assert.equal(await counter(), "5 / 5");
+
+  await page.keyboard.press("Escape");
+  assert.equal(await page.inputValue("#transcriptSearch"), "");
+  assert.equal(await visibleRows().count(), 5);
+  await page.keyboard.press("Escape");
+  assert.ok(await page.isHidden("#transcript"));
+  assert.equal(await activeId(), "transcriptBtn", "el foco vuelve al botón");
+});
+
+test("transcripción: T abre y cierra; al volver a la carga se vacía", async () => {
+  await load("transcripcion.srt");
+  await page.keyboard.press("t");
+  assert.ok(await page.isVisible("#transcript"));
+  await page.keyboard.press("t");
+  assert.ok(await page.isHidden("#transcript"));
+  await page.click("#resetBtn");
+  assert.equal(await page.locator("#transcriptList li").count(), 0);
+});
+
+test("transcripción: con 3.000 subtítulos abre y busca con fluidez", async () => {
+  const blocks = [];
+  for (let i = 0; i < 3000; i++) {
+    const t = (n) => new Date(n).toISOString().slice(11, 23).replace(".", ",");
+    blocks.push(`${i + 1}\n${t(i * 2000)} --> ${t(i * 2000 + 1500)}\nFrase número ${i + 1} con algo de texto ${i % 7 === 0 ? "especial" : ""}`);
+  }
+  await page.setInputFiles("#fileInput", { name: "larga.srt", mimeType: "text/plain", buffer: Buffer.from(blocks.join("\n\n")) });
+  await page.waitForSelector("#reader:not([hidden])");
+  const openMs = await page.evaluate(async () => {
+    const t0 = performance.now();
+    document.getElementById("transcriptBtn").click();
+    await new Promise(requestAnimationFrame);
+    return performance.now() - t0;
+  });
+  const searchMs = await page.evaluate(() => {
+    const input = document.getElementById("transcriptSearch");
+    input.value = "especial";
+    const t0 = performance.now();
+    input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })); // busca sin esperar
+    return performance.now() - t0;
+  });
+  assert.equal(await page.textContent("#transcriptCount"), "429 resultados");
+  console.log(`      abrir: ${openMs.toFixed(0)} ms · buscar: ${searchMs.toFixed(0)} ms`);
+  assert.ok(openMs < 1000 && searchMs < 500, `demasiado lento: abrir ${openMs} ms, buscar ${searchMs} ms`);
+});
+
+/* ---------- Funcionalidad: lectura en voz alta ----------
+   El navegador de pruebas no tiene voces: se sustituye speechSynthesis
+   por un doble que registra lo que se diría (window.__spoken) y permite
+   decidir cuándo termina cada frase (window.__finishSpeech()). */
+
+async function installFakeSpeech({ voices = [{ name: "Mónica", lang: "es-ES", default: true },
+                                            { name: "Samantha", lang: "en-US" }] } = {}) {
+  await page.addInitScript((voiceList) => {
+    window.__spoken = [];
+    window.__cancels = 0;
+    let currentUtterance = null;
+    window.SpeechSynthesisUtterance = class {
+      constructor(text) { this.text = text; this.lang = ""; this.rate = 1; this.voice = null; }
+    };
+    const fake = {
+      getVoices: () => voiceList,
+      speak(u) {
+        currentUtterance = u;
+        window.__spoken.push({ text: u.text, lang: u.lang, rate: u.rate, voice: u.voice?.name ?? null });
+      },
+      cancel() {
+        window.__cancels++;
+        const u = currentUtterance;
+        currentUtterance = null;
+        u?.onerror?.({ error: "interrupted" });
+      },
+      addEventListener() {},
+    };
+    Object.defineProperty(window, "speechSynthesis", { value: fake, configurable: true });
+    window.__finishSpeech = () => {
+      const u = currentUtterance;
+      currentUtterance = null;
+      u?.onend?.();
+    };
+  }, voices);
+}
+const spoken = () => page.evaluate(() => window.__spoken);
+
+test("voz: V lee el subtítulo actual y cada uno nuevo, con voz del idioma detectado", async () => {
+  await installFakeSpeech();
+  await page.goto(APP_URL);
+  await load("transcripcion.srt");
+  assert.ok(await page.isVisible("#voiceBtn"));
+  assert.match(await page.getAttribute("#voiceBtn", "title"), /español/);
+  await page.keyboard.press("v");
+  assert.equal(await page.getAttribute("#voiceBtn", "aria-pressed"), "true");
+  await page.keyboard.press("ArrowRight");
+  const said = await spoken();
+  assert.equal(said.length, 2);
+  assert.deepEqual(said[0], { text: "Primera línea del diálogo", lang: "es-ES", rate: 1, voice: "Mónica" });
+  assert.match(said[1].text, /texto raro/);
+
+  await page.keyboard.press("v"); // desactiva y calla
+  assert.equal(await page.getAttribute("#voiceBtn", "aria-pressed"), "false");
+  await page.keyboard.press("ArrowRight");
+  assert.equal((await spoken()).length, 2, "desactivada no habla");
+});
+
+test("voz: elige voz inglesa para subtítulos en inglés y usa la velocidad elegida", async () => {
+  await installFakeSpeech();
+  await page.goto(APP_URL);
+  await page.setInputFiles("#fileInput", {
+    name: "movie.srt", mimeType: "text/plain",
+    buffer: Buffer.from("1\n00:00:01,000 --> 00:00:02,000\nWhat is this? You know that I have it.\n\n" +
+                        "2\n00:00:03,000 --> 00:00:04,000\nThe car is in the garage and we are late.\n"),
+  });
+  await page.waitForSelector("#reader:not([hidden])");
+  await page.selectOption("#speedSelect", "1.5");
+  await page.click("#voiceBtn");
+  const [first] = await spoken();
+  assert.equal(first.voice, "Samantha");
+  assert.equal(first.lang, "en-US");
+  assert.equal(first.rate, 1.5);
+});
+
+test("voz: sin voz del idioma instalada, avisa y usa la predeterminada", async () => {
+  await installFakeSpeech({ voices: [{ name: "Samantha", lang: "en-US", default: true }] });
+  await page.goto(APP_URL);
+  await load("transcripcion.srt");
+  await page.click("#voiceBtn");
+  assert.match(await page.textContent("#toastText"), /No hay una voz en español/);
+  const [first] = await spoken();
+  assert.equal(first.voice, null);
+  assert.equal(first.lang, "es");
+});
+
+test("voz + reproducción: espera a que termine la frase antes de pasar al siguiente", async () => {
+  await installFakeSpeech();
+  await gotoWithPausedClock();
+  await load("reproduccion.srt"); // Uno 1–2 s · Dos 3–4 s
+  await page.click("#voiceBtn");
+  await page.click("#playBtn");
+  await page.clock.runFor(2500);  // 3,5 s: "Dos" ya debería salir, pero la voz sigue
+  assert.equal(await counter(), "1 / 4", "espera a la voz");
+  await page.evaluate(() => window.__finishSpeech());
+  await page.clock.runFor(100);
+  assert.equal(await counter(), "2 / 4");
+  assert.equal((await spoken()).at(-1).text, "Dos");
+});
+
+test("voz + reproducción: si el navegador nunca avisa del final, no se queda bloqueada", async () => {
+  await installFakeSpeech();
+  await gotoWithPausedClock();
+  await load("reproduccion.srt");
+  await page.click("#voiceBtn");
+  await page.click("#playBtn");
+  // "Uno" (3 letras): red de seguridad = 3 × 90 ms + 3 s ≈ 3,3 s.
+  await page.clock.runFor(2500);
+  assert.equal(await counter(), "1 / 4");
+  await page.clock.runFor(1500);
+  assert.equal(await counter(), "2 / 4");
+});
+
+test("voz: sin síntesis de voz en el navegador, el botón no aparece", async () => {
+  await page.addInitScript(() => {
+    Object.defineProperty(window, "speechSynthesis", { value: undefined, configurable: true });
+  });
+  await page.goto(APP_URL);
+  await load("transcripcion.srt");
+  assert.ok(await page.isHidden("#voiceBtn"));
+  await page.keyboard.press("v"); // no hace nada ni rompe
+  assert.equal(await counter(), "1 / 5");
+});
+
+/* ---------- Funcionalidad: PWA (sin conexión, instalar, abrir con…) ----------
+   El Service Worker necesita http(s): se sirve la carpeta del proyecto con
+   un servidor estático mínimo, como haría GitHub Pages. */
+
+const MIME = {
+  ".html": "text/html; charset=utf-8", ".js": "text/javascript", ".css": "text/css",
+  ".png": "image/png", ".svg": "image/svg+xml", ".ico": "image/x-icon",
+  ".webmanifest": "application/manifest+json", ".srt": "text/plain",
+};
+let server;
+let HTTP_URL;
+
+async function startServer() {
+  if (server) return;
+  server = http.createServer((req, res) => {
+    const { pathname } = new URL(req.url, "http://localhost");
+    const file = path.join(root, decodeURIComponent(pathname.endsWith("/") ? `${pathname}index.html` : pathname));
+    if (!file.startsWith(root) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) {
+      res.writeHead(404);
+      res.end();
+      return;
+    }
+    res.writeHead(200, { "Content-Type": MIME[path.extname(file)] || "application/octet-stream" });
+    fs.createReadStream(file).pipe(res);
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  HTTP_URL = `http://127.0.0.1:${server.address().port}/`;
+}
+after(() => server?.close());
+
+const pngSize = (buffer) => [buffer.readUInt32BE(16), buffer.readUInt32BE(20)];
+
+test("PWA: manifiesto válido con iconos 192/512/maskable y apertura de .srt", async () => {
+  await startServer();
+  await page.goto(HTTP_URL);
+  const href = await page.getAttribute('link[rel="manifest"]', "href");
+  const response = await page.request.get(new URL(href, HTTP_URL).href);
+  assert.equal(response.status(), 200);
+  const manifest = await response.json();
+  assert.equal(manifest.name, "Captions Reader");
+  assert.equal(manifest.display, "standalone");
+  assert.equal(manifest.start_url, "./");
+  assert.deepEqual(manifest.file_handlers[0].accept["application/x-subrip"], [".srt"]);
+  for (const icon of manifest.icons) {
+    const png = await (await page.request.get(new URL(icon.src, HTTP_URL).href)).body();
+    assert.equal(pngSize(png).join("x"), icon.sizes, `${icon.src} mide lo que declara`);
+  }
+  assert.ok(manifest.icons.some((icon) => icon.purpose === "maskable"));
+});
+
+test("PWA: con el Service Worker activo, la app carga y funciona SIN CONEXIÓN", async () => {
+  await startServer();
+  await page.goto(HTTP_URL);
+  await page.evaluate(() => navigator.serviceWorker.ready);
+  await page.reload(); // ahora la página está controlada por el Service Worker
+  assert.ok(await page.evaluate(() => Boolean(navigator.serviceWorker.controller)));
+  const caches = await page.evaluate(() => caches.keys());
+  assert.ok(caches.some((key) => key.startsWith("captions-reader-app-")), "caché de la app creada");
+
+  await context.setOffline(true);
+  await page.reload();
+  assert.ok(await page.isVisible("#dropzone"), "la página carga sin conexión");
+  await load("formatos-variados.srt");
+  await page.keyboard.press("ArrowRight");
+  assert.equal(await counter(), "2 / 4", "y funciona sin conexión");
+  await context.setOffline(false);
+});
+
+test("PWA: la primera visita avisa de que ya funciona sin conexión", async () => {
+  await startServer();
+  await page.goto(HTTP_URL);
+  await page.waitForFunction(() => /sin conexión/.test(document.getElementById("toastText").textContent));
+});
+
+test("PWA: abierta con file:// no intenta registrar el Service Worker", async () => {
+  // En file:// Chrome no permite ni consultar los registros: se vigila si la
+  // app llama a register().
+  await page.addInitScript(() => {
+    window.__registerCalls = 0;
+    if (navigator.serviceWorker) {
+      navigator.serviceWorker.register = () => { window.__registerCalls++; return Promise.reject(new Error("no")); };
+    }
+  });
+  await page.goto(APP_URL);
+  await page.waitForLoadState("load");
+  assert.equal(await page.evaluate(() => window.__registerCalls), 0);
+});
+
+test("PWA: botón 'Instalar app' cuando el navegador lo ofrece", async () => {
+  assert.ok(await page.isHidden("#installBtn"));
+  await page.evaluate(() => {
+    const event = new Event("beforeinstallprompt", { cancelable: true });
+    event.prompt = () => { window.__prompted = true; };
+    event.userChoice = Promise.resolve({ outcome: "accepted" });
+    window.dispatchEvent(event);
+  });
+  assert.ok(await page.isVisible("#installBtn"));
+  await page.click("#installBtn");
+  assert.equal(await page.evaluate(() => window.__prompted), true);
+  assert.ok(await page.isHidden("#installBtn"));
+});
+
+test("PWA: 'Abrir con…' del sistema operativo abre el .srt (File Handling API)", async () => {
+  // Chromium ya trae window.launchQueue (de solo lectura): se redefine.
+  await page.addInitScript(() => {
+    Object.defineProperty(window, "launchQueue", {
+      configurable: true,
+      value: { setConsumer: (consumer) => { window.__launchConsumer = consumer; } },
+    });
+  });
+  await page.goto(APP_URL);
+  const srt = fs.readFileSync(fixture("formatos-variados.srt"), "utf8");
+  await page.evaluate((text) => window.__launchConsumer({
+    files: [{ getFile: async () => new File([text], "Serie.S01E02.Piloto.srt") }],
+  }), srt);
+  await page.waitForSelector("#reader:not([hidden])");
+  assert.equal(await counter(), "1 / 4");
+  assert.match(await page.textContent("#tagline"), /Serie \| Temporada 1, episodio 2: 'Piloto'/);
 });

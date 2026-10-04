@@ -1,0 +1,19 @@
+1
+00:00:01,000 --> 00:00:03,000
+Primera línea del diálogo
+
+2
+00:00:05,000 --> 00:00:07,000
+&lt;img src=x onerror="window.__xss=1"&gt; texto raro
+
+3
+00:00:10,000 --> 00:00:12,000
+Otra LÍNEA más
+
+4
+00:00:15,000 --> 00:00:17,000
+Nada que ver
+
+5
+00:00:20,000 --> 00:00:22,000
+La línea final

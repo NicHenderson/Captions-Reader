@@ -49,6 +49,16 @@ html { height: 100%; }
    verdad. Al iniciar, así solo se ve la zona de carga. */
 [hidden] { display: none !important; }
 
+/* Oculta visualmente pero mantiene el texto para lectores de pantalla */
+.visually-hidden {
+  position: absolute !important;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
 body {
   min-height: 100%;
   font-family: var(--font-body);
@@ -123,6 +133,24 @@ body {
   letter-spacing: 0.12em;
   text-transform: uppercase;
 }
+
+/* Botón "Instalar app" (PWA): discreto, bajo el tagline */
+.install {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-top: 0.9rem;
+  padding: 0.35rem 0.85rem;
+  font-family: var(--font-body);
+  font-size: 0.78rem;
+  color: var(--sage);
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  cursor: pointer;
+  transition: color 0.25s var(--ease), background 0.25s var(--ease), border-color 0.25s var(--ease);
+}
+.install:hover { color: var(--ink); background: var(--mint); border-color: var(--mint); }
 
 /* ===================================================================
    ESCENARIO
@@ -219,6 +247,105 @@ body {
   animation: shake 0.4s var(--ease);
 }
 
+/* ---------- Recientes (archivos abiertos antes) ---------- */
+.recents {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+}
+
+.recents__title {
+  font-size: 0.78rem;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--moss);
+}
+
+.recents__list {
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 0.6rem;
+}
+
+.recents__item { position: relative; }
+
+/* Toda la tarjeta es un botón que abre el archivo */
+.recents__open {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  padding: 0.9rem 2.6rem 0.9rem 1rem;
+  text-align: left;
+  font-family: var(--font-body);
+  color: var(--frost);
+  background: rgba(170, 210, 186, 0.04);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  cursor: pointer;
+  transition: background 0.25s var(--ease), border-color 0.25s var(--ease), transform 0.25s var(--ease);
+}
+.recents__open:hover {
+  background: rgba(185, 245, 216, 0.08);
+  border-color: rgba(185, 245, 216, 0.45);
+  transform: translateY(-1px);
+}
+
+.recents__name {
+  font-family: var(--font-display);
+  font-size: 1rem;
+  line-height: 1.3;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.recents__meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.6rem;
+  font-size: 0.75rem;
+  color: var(--moss);
+  font-variant-numeric: tabular-nums;
+}
+
+.recents__progress {
+  height: 3px;
+  background: rgba(170, 210, 186, 0.12);
+  border-radius: 999px;
+  overflow: hidden;
+}
+.recents__progress span {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, var(--sage), var(--mint));
+  border-radius: 999px;
+}
+
+/* Botón para quitar de la lista (esquina superior derecha de la tarjeta) */
+.recents__remove {
+  position: absolute;
+  top: 0.55rem;
+  right: 0.55rem;
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  font-size: 1rem;
+  line-height: 1;
+  color: var(--moss);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 50%;
+  cursor: pointer;
+  transition: color 0.2s var(--ease), background 0.2s var(--ease), border-color 0.2s var(--ease);
+}
+.recents__remove:hover { color: var(--frost); background: rgba(185, 245, 216, 0.1); border-color: var(--line); }
+
 /* ===================================================================
    ESTADO 2 — CONTROLADOR DE SUBTÍTULOS
    =================================================================== */
@@ -306,6 +433,24 @@ body {
   font-variant-numeric: tabular-nums; /* dígitos de ancho fijo */
 }
 
+.caption-card__clock {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-left: auto;         /* se pega al contador, a la derecha */
+  color: var(--mint);
+  font-variant-numeric: tabular-nums;
+}
+.caption-card__clock::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--mint);
+  box-shadow: 0 0 10px var(--glow);
+  animation: pulse 1.4s ease-in-out infinite;
+}
+
 .caption-card__counter {
   padding: 0.25rem 0.6rem;
   color: var(--sage);
@@ -340,6 +485,13 @@ body {
   animation: swap 0.35s var(--ease);
 }
 
+/* Reproducción: entre el final de un subtítulo y el inicio del siguiente
+   no hay diálogo; el texto se atenúa para reflejarlo. */
+.caption-card__text.is-gap {
+  opacity: 0.38;
+  transition: opacity 0.4s var(--ease);
+}
+
 /* ---------- Fila de acciones (Copiar / Saltar a) ---------- */
 .caption-card__actions {
   display: flex;
@@ -371,6 +523,59 @@ body {
   border-color: var(--mint);
 }
 .action__icon { display: block; }
+
+/* Botones de alternancia activos (Voz) y reproducción en curso */
+.action[aria-pressed="true"],
+.action[aria-expanded="true"],
+.action--play.is-playing {
+  color: var(--ink);
+  background: var(--mint);
+  border-color: var(--mint);
+  box-shadow: 0 0 18px var(--glow);
+}
+
+/* Foco por teclado común a las pastillas de la tarjeta */
+.action:focus-visible,
+.speed__select:focus-visible,
+.reset:focus-visible,
+.recents__open:focus-visible,
+.recents__remove:focus-visible,
+.toast__action:focus-visible,
+.install:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--ink), 0 0 0 4px var(--mint), 0 0 18px rgba(185, 245, 216, 0.35);
+}
+
+/* ---------- Barra de reproducción ---------- */
+.playbar {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+/* Desplegable de velocidad con aspecto de pastilla */
+.speed { display: inline-flex; }
+.speed__select {
+  appearance: none;
+  -webkit-appearance: none;
+  padding: 0.5rem 2rem 0.5rem 1rem;
+  font-family: var(--font-body);
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--sage);
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%23AAD2BA' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E")
+      no-repeat right 0.85rem center,
+    rgba(170, 210, 186, 0.08);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  cursor: pointer;
+  transition: border-color 0.25s var(--ease), color 0.25s var(--ease);
+}
+.speed__select:hover { color: var(--frost); border-color: rgba(185, 245, 216, 0.45); }
+.speed__select option { color: var(--frost); background: var(--ink); }
 
 /* Estado momentáneo tras copiar con éxito (clase añadida por JS) */
 .action.is-copied {
@@ -418,6 +623,174 @@ body {
 }
 
 /* ===================================================================
+   TRANSCRIPCIÓN (lista completa con búsqueda)
+   =================================================================== */
+.transcript {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  background: rgba(29, 30, 24, 0.6);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+  animation: rise 0.45s var(--ease) both;
+}
+
+.transcript__bar {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--line);
+  color: var(--moss);
+}
+.transcript__icon { flex-shrink: 0; }
+
+.transcript__search {
+  flex: 1;
+  min-width: 0;
+  padding: 0.45rem 0.2rem;
+  font-family: var(--font-body);
+  font-size: 0.95rem;
+  color: var(--frost);
+  background: transparent;
+  border: none;
+  outline: none;
+}
+.transcript__search::placeholder { color: var(--moss); }
+/* Botón nativo de borrar (×) del campo de búsqueda, con los colores de la app */
+.transcript__search::-webkit-search-cancel-button {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  cursor: pointer;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 14 14'%3E%3Cpath d='M2 2l10 10M12 2 2 12' stroke='%23AAD2BA' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+.transcript__bar:focus-within { box-shadow: inset 0 -2px 0 var(--mint); color: var(--mint); }
+
+.transcript__count {
+  flex-shrink: 0;
+  font-size: 0.78rem;
+  color: var(--sage);
+  font-variant-numeric: tabular-nums;
+}
+
+.transcript__list {
+  list-style: none;
+  max-height: min(48vh, 420px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 0.4rem;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(170, 210, 186, 0.3) transparent;
+}
+
+/* Cada fila: tiempo + texto. content-visibility evita pintar las filas
+   que no se ven: un archivo con miles de subtítulos sigue siendo fluido. */
+.transcript__item {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 52px;
+}
+
+.transcript__row {
+  width: 100%;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.9rem;
+  align-items: baseline;
+  padding: 0.6rem 0.75rem;
+  text-align: left;
+  font-family: var(--font-body);
+  color: var(--frost);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background 0.2s var(--ease), border-color 0.2s var(--ease);
+}
+.transcript__row:hover { background: rgba(185, 245, 216, 0.06); }
+.transcript__row:focus-visible { outline: none; border-color: var(--mint); }
+
+.transcript__time {
+  font-size: 0.75rem;
+  color: var(--moss);
+  font-variant-numeric: tabular-nums;
+}
+.transcript__text {
+  font-size: 0.95rem;
+  line-height: 1.45;
+  white-space: pre-line;
+}
+
+/* Subtítulo que se está mostrando ahora */
+.transcript__row[aria-current="true"] {
+  background: rgba(185, 245, 216, 0.1);
+  border-color: rgba(185, 245, 216, 0.35);
+}
+.transcript__row[aria-current="true"] .transcript__time { color: var(--mint); }
+
+/* Coincidencias de la búsqueda */
+.transcript__text mark {
+  color: var(--ink);
+  background: var(--mint);
+  border-radius: 3px;
+  padding: 0 1px;
+}
+
+.transcript__empty {
+  padding: 1.4rem;
+  text-align: center;
+  font-size: 0.9rem;
+  color: var(--moss);
+}
+
+/* ===================================================================
+   AVISO FLOTANTE (toast)
+   =================================================================== */
+.toast-region {
+  position: fixed;
+  left: 50%;
+  bottom: clamp(1rem, 4vh, 2rem);
+  transform: translateX(-50%);
+  z-index: 60;
+  width: max-content;
+  max-width: calc(100% - 2rem);
+  pointer-events: none;      /* solo el aviso en sí recibe clics */
+}
+
+.toast {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  padding: 0.7rem 0.75rem 0.7rem 1.1rem;
+  font-size: 0.88rem;
+  color: var(--frost);
+  background: rgba(29, 30, 24, 0.94);
+  border: 1px solid rgba(185, 245, 216, 0.3);
+  border-radius: 999px;
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.5), 0 0 24px rgba(185, 245, 216, 0.08);
+  backdrop-filter: blur(8px);
+  pointer-events: auto;
+  animation: rise 0.35s var(--ease) both;
+}
+
+.toast__action {
+  flex-shrink: 0;
+  padding: 0.4rem 0.9rem;
+  font-family: var(--font-body);
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--ink);
+  background: var(--mint);
+  border: none;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background 0.2s var(--ease);
+}
+.toast__action:hover { background: var(--sage); }
+
+/* ===================================================================
    ANIMACIONES (keyframes)
    =================================================================== */
 @keyframes rise {
@@ -435,6 +808,11 @@ body {
   to   { opacity: 1; transform: translateY(0); filter: blur(0); }
 }
 
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.35; }
+}
+
 @keyframes shake {
   0%, 100% { transform: translateX(0); }
   25%      { transform: translateX(-6px); }
@@ -447,6 +825,7 @@ body {
   *::before,
   *::after {
     animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important; /* las infinitas (pulso, flotar) se detienen */
     transition-duration: 0.001ms !important;
   }
 }
@@ -689,9 +1068,12 @@ body {
     grid-template-areas:
       "card card"
       "prev next"
+      "transcript transcript"
       "reset reset";
   }
   .caption-card { grid-area: card; }
+  .transcript   { grid-area: transcript; }
+  .toast        { border-radius: 18px; }
   .nav--prev    { grid-area: prev; justify-self: stretch; border-radius: 14px; width: 100%; }
   .nav--next    { grid-area: next; justify-self: stretch; border-radius: 14px; width: 100%; }
   .reset        { grid-area: reset; }

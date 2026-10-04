@@ -5,6 +5,12 @@
   <!-- Diseño responsive: la app se adapta a móvil y escritorio -->
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Captions Reader</title>
+  <meta name="description" content="Lector de subtítulos .srt: navega, busca, reproduce y escucha subtítulos, también sin conexión." />
+  <meta name="theme-color" content="#1D1E18" />
+
+  <!-- PWA: instalable y usable sin conexión (solo al servirse por http/https) -->
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="apple-touch-icon" href="icons/icon-192.png" />
 
   <!-- Tipografías: Fraunces (display, carácter cinematográfico) + Hanken Grotesk (cuerpo legible) -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -14,7 +20,7 @@
     rel="stylesheet"
   />
 
-  <link rel="stylesheet" href="styles.css?v=4" />
+  <link rel="stylesheet" href="styles.css?v=5" />
   <link rel="icon" type="image/png" href="CaptionsReader-Icon.ico">
 </head>
 
@@ -30,6 +36,15 @@
       <h1 class="brand__name">Captions&nbsp;Reader</h1>
     </div>
     <p class="brand__tagline" id="tagline">Lector de subtítulos · formato .srt</p>
+
+    <!-- Solo aparece cuando el navegador permite instalar la app (PWA) -->
+    <button class="install" id="installBtn" type="button" hidden>
+      <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
+        <path d="M12 3v12m0 0-4-4m4 4 4-4M5 21h14" fill="none" stroke="currentColor"
+              stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      Instalar app
+    </button>
   </header>
 
   <!-- ============ ESCENARIO PRINCIPAL ============ -->
@@ -59,6 +74,12 @@
       <!-- Zona reservada para mensajes de error (vacía por defecto).
            role="alert" hace que los lectores de pantalla la anuncien. -->
       <p class="uploader__error" id="error" role="alert"></p>
+
+      <!-- Archivos abiertos recientemente (IndexedDB). Oculto si no hay. -->
+      <section class="recents" id="recents" aria-labelledby="recentsTitle" hidden>
+        <h2 class="recents__title" id="recentsTitle">Recientes</h2>
+        <ul class="recents__list" id="recentsList"></ul>
+      </section>
     </section>
 
     <!-- ---------- ESTADO 2: CONTROLADOR DE SUBTÍTULOS ----------
@@ -75,6 +96,8 @@
         <!-- Metadatos: marca de tiempo + contador (índice / total) -->
         <div class="caption-card__meta">
           <span class="caption-card__time" id="timecode">00:00:00,000 → 00:00:00,000</span>
+          <!-- Reloj de la reproducción temporizada (solo mientras reproduce) -->
+          <span class="caption-card__clock" id="playClock" hidden></span>
           <span class="caption-card__counter" id="counter">0 / 0</span>
         </div>
 
@@ -86,7 +109,44 @@
           <div class="progress__bar" id="progressBar"></div>
         </div>
 
-        <!-- Fila de acciones: copiar y saltar a una marca de tiempo -->
+        <!-- Barra de reproducción: play/pausa, velocidad y lectura en voz alta -->
+        <div class="playbar" role="group" aria-label="Reproducción">
+          <button class="action action--play" id="playBtn" type="button"
+                  title="Reproducir / pausar (P)">
+            <svg class="action__icon" id="playIcon" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+              <path d="M8 5v14l11-7z" fill="currentColor"/>
+            </svg>
+            <svg class="action__icon" id="pauseIcon" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" hidden>
+              <path d="M7 5h4v14H7zM13 5h4v14h-4z" fill="currentColor"/>
+            </svg>
+            <span class="action__label" id="playLabel">Reproducir</span>
+          </button>
+
+          <label class="speed" title="Velocidad de la reproducción y de la voz">
+            <span class="visually-hidden">Velocidad</span>
+            <select class="speed__select" id="speedSelect">
+              <option value="0.5">0,5×</option>
+              <option value="0.75">0,75×</option>
+              <option value="1" selected>1×</option>
+              <option value="1.25">1,25×</option>
+              <option value="1.5">1,5×</option>
+              <option value="2">2×</option>
+            </select>
+          </label>
+
+          <!-- Oculto si el navegador no tiene síntesis de voz -->
+          <button class="action" id="voiceBtn" type="button" aria-pressed="false"
+                  title="Leer en voz alta (V)" hidden>
+            <svg class="action__icon" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+              <path d="M4 9v6h4l5 4V5L8 9H4z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+              <path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12" fill="none" stroke="currentColor"
+                    stroke-width="2" stroke-linecap="round"/>
+            </svg>
+            <span class="action__label">Voz</span>
+          </button>
+        </div>
+
+        <!-- Fila de acciones: copiar, saltar a una marca de tiempo y transcripción -->
         <div class="caption-card__actions">
           <!-- Botón para copiar el texto del subtítulo actual al portapapeles -->
           <button class="action" id="copyBtn" type="button" aria-label="Copiar subtítulo actual">
@@ -110,6 +170,16 @@
             </svg>
             <span class="action__label">Saltar a</span>
           </button>
+
+          <!-- Muestra/oculta la transcripción completa con búsqueda -->
+          <button class="action" id="transcriptBtn" type="button" aria-expanded="false"
+                  aria-controls="transcript" title="Transcripción (T)">
+            <svg class="action__icon" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+              <path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01" fill="none"
+                    stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            </svg>
+            <span class="action__label">Transcripción</span>
+          </button>
         </div>
       </article>
 
@@ -117,6 +187,23 @@
       <button class="nav nav--next" id="nextBtn" type="button" aria-label="Subtítulo siguiente">
         <span aria-hidden="true">›</span>
       </button>
+
+      <!-- Transcripción completa: lista de todos los subtítulos con búsqueda -->
+      <section class="transcript" id="transcript" aria-label="Transcripción" hidden>
+        <div class="transcript__bar">
+          <svg class="transcript__icon" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+            <circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" stroke-width="2"/>
+            <path d="m20 20-3.5-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+          <input class="transcript__search" id="transcriptSearch" type="search"
+                 placeholder="Buscar en los subtítulos…" aria-label="Buscar en los subtítulos"
+                 aria-describedby="transcriptCount" autocomplete="off" spellcheck="false" />
+          <span class="transcript__count" id="transcriptCount" aria-live="polite"></span>
+        </div>
+        <!-- Lista completa y, mientras se busca, la lista de resultados -->
+        <ol class="transcript__list" id="transcriptList"></ol>
+        <ol class="transcript__list" id="transcriptResults" aria-label="Resultados de la búsqueda" hidden></ol>
+      </section>
 
       <!-- Acción secundaria: volver al estado de carga -->
       <button class="reset" id="resetBtn" type="button">↺ Cargar otro archivo</button>
@@ -162,14 +249,30 @@
     </form>
   </dialog>
 
+  <!-- ============ AVISO FLOTANTE (toast) ============
+       La región role="status" está siempre presente para que los lectores
+       de pantalla anuncien los mensajes al aparecer. -->
+  <div class="toast-region" role="status" aria-live="polite">
+    <div class="toast" id="toast" hidden>
+      <span class="toast__text" id="toastText"></span>
+      <button class="toast__action" id="toastAction" type="button" hidden></button>
+    </div>
+  </div>
+
   <!-- Scripts clásicos con "defer": se ejecutan en orden, con el DOM ya listo.
        El "?v=N" de CSS y JS evita que el navegador mezcle este HTML con
        versiones antiguas guardadas en caché (GitHub Pages las cachea unos
        minutos). Hay que subir el número cada vez que se publiquen cambios.
-       captions-core.js (lógica pura) va primero porque app.js usa sus funciones.
+       captions-core.js (lógica pura) va primero porque app.js usa sus funciones;
+       las funcionalidades de features/ van después porque usan la API de app.js.
        Al no usar import/export, funciona al abrir el .html directamente
        (sin servidor local ni problemas de CORS por file://). -->
-  <script src="captions-core.js?v=4" defer></script>
-  <script src="app.js?v=4" defer></script>
+  <script src="captions-core.js?v=5" defer></script>
+  <script src="app.js?v=5" defer></script>
+  <script src="features/recents.js?v=5" defer></script>
+  <script src="features/playback.js?v=5" defer></script>
+  <script src="features/transcript.js?v=5" defer></script>
+  <script src="features/speech.js?v=5" defer></script>
+  <script src="features/pwa.js?v=5" defer></script>
 </body>
 </html>

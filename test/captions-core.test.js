@@ -11,10 +11,16 @@ const path = require("node:path");
 const {
   cleanText,
   decodeSubtitleBuffer,
+  detectLanguage,
   extractTitleFromFilename,
   findCueIndexAt,
+  findCueIndexBefore,
+  findMatches,
+  formatClock,
   formatMs,
   formatTimecode,
+  hashText,
+  makeFileId,
   parseSRT,
 } = require("../captions-core.js");
 
@@ -163,4 +169,98 @@ describe("extractTitleFromFilename", () => {
       assert.equal(extractTitleFromFilename(filename), expected);
     });
   }
+});
+
+describe("hashText / makeFileId", () => {
+  test("es determinista y distingue contenidos", () => {
+    assert.equal(hashText("hola"), hashText("hola"));
+    assert.notEqual(hashText("hola"), hashText("hola!"));
+    assert.match(hashText(""), /^[0-9a-f]{8}$/);
+  });
+
+  test("el id combina nombre y contenido", () => {
+    assert.equal(makeFileId("a.srt", "x"), makeFileId("a.srt", "x"));
+    assert.notEqual(makeFileId("a.srt", "x"), makeFileId("b.srt", "x"));
+    assert.notEqual(makeFileId("a.srt", "x"), makeFileId("a.srt", "y"));
+  });
+});
+
+describe("findCueIndexBefore (cue activo en la reproducción)", () => {
+  const cues = [1000, 5000, 9000].map((startMs) => ({ startMs }));
+
+  test("antes del primer cue devuelve -1", () => {
+    assert.equal(findCueIndexBefore(cues, 0), -1);
+    assert.equal(findCueIndexBefore(cues, 999), -1);
+  });
+
+  test("devuelve el último cue que ya empezó", () => {
+    assert.equal(findCueIndexBefore(cues, 1000), 0);
+    assert.equal(findCueIndexBefore(cues, 4999), 0);
+    assert.equal(findCueIndexBefore(cues, 5000), 1);
+    assert.equal(findCueIndexBefore(cues, 999999), 2);
+  });
+
+  test("lista vacía", () => {
+    assert.equal(findCueIndexBefore([], 1000), -1);
+  });
+});
+
+describe("formatClock", () => {
+  test("HH:MM:SS sin milisegundos y nunca negativo", () => {
+    assert.equal(formatClock(3723999), "01:02:03");
+    assert.equal(formatClock(-50), "00:00:00");
+  });
+});
+
+describe("findMatches (búsqueda en la transcripción)", () => {
+  test("no distingue mayúsculas ni tildes", () => {
+    assert.deepEqual(findMatches("Primera Línea", "linea"), [[8, 13]]);
+    assert.deepEqual(findMatches("señor NÚÑEZ", "nunez"), [[6, 11]]);
+    assert.deepEqual(findMatches("pingüino", "PINGUINO"), [[0, 8]]);
+  });
+
+  test("varias apariciones, sin solaparse", () => {
+    assert.deepEqual(findMatches("aaaa", "aa"), [[0, 2], [2, 4]]);
+    assert.deepEqual(findMatches("la casa, la mesa", "la"), [[0, 2], [9, 11]]);
+  });
+
+  test("los tramos apuntan al texto original aunque tenga tildes compuestas", () => {
+    const text = "cafe\u0301 y más"; // "café" con la tilde como carácter combinado
+    // El tramo incluye la tilde combinada: se resalta "café" completo.
+    assert.deepEqual(findMatches(text, "cafe"), [[0, 5]]);
+    assert.deepEqual(findMatches(text, "mas"), [[text.indexOf("más"), text.indexOf("más") + 3]]);
+  });
+
+  test("consulta vacía o sin coincidencias", () => {
+    assert.deepEqual(findMatches("hola", "   "), []);
+    assert.deepEqual(findMatches("hola", "adios"), []);
+  });
+});
+
+describe("detectLanguage", () => {
+  test("reconoce idiomas habituales", () => {
+    assert.equal(detectLanguage(["¿Qué tal, señor? Yo estoy bien, pero hay algo raro en la casa."]), "es");
+    assert.equal(detectLanguage(["What is this? You know that I have it in my car."]), "en");
+    assert.equal(detectLanguage(["Je ne sais pas, mais nous sommes très contents avec vous."]), "fr");
+    assert.equal(detectLanguage(["Eu não sei, você está muito bem agora, obrigado."]), "pt");
+    assert.equal(detectLanguage(["Ciao, che cosa questo? Sono molto contento, grazie."]), "it");
+    assert.equal(detectLanguage(["Ich bin nicht sicher, aber wir sind auf dem Weg und das ist gut."]), "de");
+  });
+
+  test("sin evidencia suficiente o ambigua devuelve null", () => {
+    assert.equal(detectLanguage(["OK"]), null);
+    assert.equal(detectLanguage([]), null);
+    assert.equal(detectLanguage(["la casa"]), null, "un solo indicio no basta");
+    assert.equal(detectLanguage(["the car, el coche"]), null, "empate entre idiomas");
+  });
+
+  test("archivo corto: 2 indicios bastan si ningún otro idioma tiene ninguno", () => {
+    assert.equal(detectLanguage(["Primera línea del diálogo", "La línea final"]), "es");
+  });
+
+  test("fixture en español (Latin-1)", () => {
+    const cues = parseSRT(decodeSubtitleBuffer(fixture("latin1-windows1252.srt")));
+    // Muy poco texto: aun así no debe confundirse con otro idioma.
+    assert.notEqual(detectLanguage(cues.map((c) => c.text)), "en");
+  });
 });

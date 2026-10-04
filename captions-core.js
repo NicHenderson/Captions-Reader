@@ -391,6 +391,171 @@ function parseSRT(raw) {
 }
 
 /* ---------------------------------------------------------------------
+   6) UTILIDADES PARA LAS FUNCIONALIDADES
+   (recientes, reproducción, transcripción y lectura en voz alta)
+   --------------------------------------------------------------------- */
+
+/**
+ * Hash FNV-1a de 32 bits en hexadecimal. No es criptográfico: solo sirve
+ * para reconocer el mismo archivo aunque se vuelva a abrir otro día.
+ * @param {string} str
+ * @returns {string} 8 caracteres hexadecimales.
+ */
+function hashText(str) {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < str.length; i++) {
+    hash ^= str.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return (hash >>> 0).toString(16).padStart(8, "0");
+}
+
+/**
+ * Identificador estable de un archivo de subtítulos: nombre + hash del
+ * contenido. Si el archivo cambia (otra versión), es otro identificador.
+ * @param {string} name
+ * @param {string} text
+ * @returns {string}
+ */
+function makeFileId(name, text) {
+  return `${name}#${hashText(text)}`;
+}
+
+/**
+ * Índice del ÚLTIMO cue que ya ha empezado en el instante t (ms), o -1 si
+ * todavía no ha empezado ninguno. Búsqueda binaria (cues ordenados).
+ * Es el cue "activo" durante la reproducción temporizada.
+ * @param {Array<{startMs:number}>} cues
+ * @param {number} t
+ * @returns {number}
+ */
+function findCueIndexBefore(cues, t) {
+  let lo = 0;
+  let hi = cues.length - 1;
+  let found = -1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    if (cues[mid].startMs <= t) {
+      found = mid;
+      lo = mid + 1;
+    } else {
+      hi = mid - 1;
+    }
+  }
+  return found;
+}
+
+/**
+ * Reloj sin milisegundos: 3723004 -> "01:02:03".
+ * @param {number} ms
+ * @returns {string}
+ */
+function formatClock(ms) {
+  return formatMs(Math.max(0, ms)).slice(0, 8);
+}
+
+/**
+ * Normaliza un carácter para buscar: minúsculas y sin tildes ni diéresis
+ * ("Á" -> "a", "ñ" -> "n", "ü" -> "u").
+ * @param {string} ch
+ * @returns {string}
+ */
+function foldChar(ch) {
+  return ch.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+}
+
+/**
+ * Prepara un texto para buscar en él: versión normalizada (sin tildes ni
+ * mayúsculas) + mapa "posición normalizada -> posición original".
+ * Conviene calcularlo UNA vez por subtítulo y reutilizarlo en cada búsqueda.
+ * @param {string} text
+ * @returns {{folded: string, map: number[]}}
+ */
+function prepareSearch(text) {
+  let folded = "";
+  const map = [];
+  let pos = 0;
+  for (const ch of text) {               // for...of recorre por puntos de código
+    const f = foldChar(ch);
+    for (let k = 0; k < f.length; k++) map.push(pos);
+    folded += f;
+    pos += ch.length;
+  }
+  map.push(pos); // centinela: fin del texto
+  return { folded, map };
+}
+
+/**
+ * Devuelve los tramos [inicio, fin) del texto ORIGINAL donde aparece la
+ * consulta, sin distinguir mayúsculas ni tildes ("linea" encuentra "Línea").
+ * Los tramos no se solapan. Consulta vacía -> [].
+ * @param {string} text
+ * @param {string} query
+ * @param {{folded: string, map: number[]}} [prepared] - De prepareSearch(text).
+ * @returns {Array<[number, number]>}
+ */
+function findMatches(text, query, prepared = prepareSearch(text)) {
+  const needle = Array.from(query.trim()).map(foldChar).join("");
+  if (!needle) return [];
+
+  const { folded, map } = prepared;
+  const ranges = [];
+  let from = 0;
+  while (true) {
+    const at = folded.indexOf(needle, from);
+    if (at === -1) break;
+    ranges.push([map[at], map[at + needle.length]]);
+    from = at + needle.length;
+  }
+  return ranges;
+}
+
+/* Palabras muy frecuentes y propias de cada idioma (sin tildes). Se evitan
+   las que comparten varios idiomas ("a", "no", "de", "que"...). */
+const LANGUAGE_HINTS = {
+  es: ["el", "la", "los", "las", "y", "del", "una", "pero", "porque", "esto", "eso",
+       "yo", "usted", "estoy", "hay", "muy", "ahora", "bien", "quiero", "vamos", "tengo", "senor"],
+  en: ["the", "and", "you", "is", "are", "was", "what", "this", "that", "it", "my",
+       "your", "have", "of", "to", "in", "we", "he", "she", "don", "just", "know"],
+  fr: ["le", "les", "et", "est", "je", "vous", "nous", "pas", "une", "des", "du",
+       "ce", "mais", "avec", "pour", "oui", "tres", "suis", "ca", "c"],
+  pt: ["o", "os", "do", "da", "dos", "das", "em", "um", "uma", "nao", "voce", "isso",
+       "eu", "muito", "agora", "obrigado", "entao", "ate", "sao"],
+  it: ["il", "gli", "che", "sono", "sei", "perche", "questo", "questa", "anche",
+       "molto", "ciao", "grazie", "cosa", "della", "sto", "ho"],
+  de: ["der", "die", "das", "und", "ist", "nicht", "ich", "sie", "wir", "ein",
+       "eine", "zu", "mit", "auf", "den", "dem", "ja", "auch"],
+};
+
+/**
+ * Detecta el idioma predominante de un conjunto de textos contando
+ * palabras características. Devuelve un código ("es", "en", "fr", "pt",
+ * "it", "de") o null si no hay evidencia suficiente.
+ * @param {string[]} texts
+ * @returns {string|null}
+ */
+function detectLanguage(texts) {
+  const words = Array.from(texts.join(" ")).map(foldChar).join("").match(/[a-z]+/g) || [];
+  const scores = {};
+  for (const lang of Object.keys(LANGUAGE_HINTS)) scores[lang] = 0;
+  const lookup = new Map();
+  for (const [lang, list] of Object.entries(LANGUAGE_HINTS)) {
+    for (const w of list) lookup.set(w, [...(lookup.get(w) || []), lang]);
+  }
+  for (const w of words) {
+    for (const lang of lookup.get(w) || []) scores[lang]++;
+  }
+  const ranked = Object.entries(scores).sort((a, b) => b[1] - a[1]);
+  const [best, second] = ranked;
+  // Exige evidencia suficiente y una ventaja clara sobre el segundo: al
+  // menos 3 indicios con un 30 % de ventaja, o 2 si ningún otro idioma
+  // tiene ninguno (archivos muy cortos).
+  const clearWinner = best[1] >= 3 && best[1] >= second[1] * 1.3;
+  const shortButUnambiguous = best[1] >= 2 && second[1] === 0;
+  return clearWinner || shortButUnambiguous ? best[0] : null;
+}
+
+/* ---------------------------------------------------------------------
    EXPORTACIÓN PARA NODE (tests). En el navegador "module" no existe y
    las funciones simplemente quedan disponibles para app.js.
    --------------------------------------------------------------------- */
@@ -399,10 +564,17 @@ if (typeof module !== "undefined" && module.exports) {
     cleanText,
     decodeEntities,
     decodeSubtitleBuffer,
+    detectLanguage,
     extractTitleFromFilename,
     findCueIndexAt,
+    findCueIndexBefore,
+    findMatches,
+    formatClock,
     formatMs,
     formatTimecode,
+    hashText,
+    makeFileId,
     parseSRT,
+    prepareSearch,
   };
 }

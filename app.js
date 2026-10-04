@@ -8,6 +8,9 @@
      3) Conectar la interfaz con la lógica pura de captions-core.js
         (parser .srt, limpieza de texto, título, utilidades de tiempo),
         que se carga antes que este archivo.
+     4) Ofrecer una pequeña API (eventos, goToIndex, openSubtitles, toast,
+        atajos) a las funcionalidades de la carpeta features/, que se
+        cargan DESPUÉS de este archivo y se enganchan sin modificarlo.
    ===================================================================== */
 
 "use strict";
@@ -34,6 +37,11 @@ const dom = {
   copyLabel:   document.getElementById("copyLabel"),
   tagline:     document.getElementById("tagline"),
 
+  // Aviso flotante (toast) reutilizable
+  toast:       document.getElementById("toast"),
+  toastText:   document.getElementById("toastText"),
+  toastAction: document.getElementById("toastAction"),
+
   // Modal "Saltar a" (<dialog> nativo)
   jumpBtn:     document.getElementById("jumpBtn"),
   jumpModal:   document.getElementById("jumpModal"),
@@ -55,9 +63,45 @@ const MAX_FILE_BYTES = 5 * 1024 * 1024;
    "cues" guarda la lista de subtítulos; "index" el que se muestra ahora.
    --------------------------------------------------------------------- */
 const state = {
-  cues: [],   // Array de objetos { startMs, endMs, text }
-  index: 0,   // Posición actual dentro de cues
+  cues: [],    // Array de objetos { startMs, endMs, text }
+  index: 0,    // Posición actual dentro de cues
+  file: null,  // Archivo abierto: { id, name, title, text } (null en espera)
 };
+
+/* ---------------------------------------------------------------------
+   2b) EVENTOS DE LA APLICACIÓN
+   Las funcionalidades (carpeta features/) se suscriben a estos eventos en
+   lugar de modificar el código de este archivo:
+     "load"   -> se abrió un archivo        detalle: { file, cues }
+     "cue"    -> cambió el subtítulo visible detalle: { index, cue, source }
+     "reset"  -> se volvió a la zona de carga
+   "source" indica quién provocó el cambio: "load", "user" (flechas,
+   botones, teclado), "jump" (Saltar a), "resume" (reanudar),
+   "playback" (reproducción) o "transcript" (clic en la transcripción).
+   --------------------------------------------------------------------- */
+const listeners = new Map();
+
+/** Suscribe "handler" al evento "type". Devuelve una función para anularlo. */
+function on(type, handler) {
+  if (!listeners.has(type)) listeners.set(type, new Set());
+  listeners.get(type).add(handler);
+  return () => listeners.get(type).delete(handler);
+}
+
+/** Notifica un evento. Un fallo en una funcionalidad no rompe las demás. */
+function emit(type, detail) {
+  for (const handler of listeners.get(type) || []) {
+    try {
+      handler(detail);
+    } catch (error) {
+      console.error(`Captions Reader: error en un oyente de "${type}"`, error);
+    }
+  }
+}
+
+// Punto de encuentro entre funcionalidades (p. ej. la reproducción pregunta
+// a la voz si sigue hablando). Cada archivo de features/ registra aquí lo suyo.
+const features = {};
 
 /* ---------------------------------------------------------------------
    3) RENDERIZADO DE LA INTERFAZ
@@ -102,8 +146,20 @@ function navigate(step) {
   const next = state.index + step;
   // clamp: mantiene el índice dentro del rango válido [0, length - 1]
   if (next < 0 || next >= state.cues.length) return;
-  state.index = next;
+  goToIndex(next, "user");
+}
+
+/**
+ * ÚNICO punto por el que cambia el subtítulo visible: actualiza el estado,
+ * repinta y avisa a las funcionalidades con el evento "cue".
+ * @param {number} index - Se recorta al rango válido.
+ * @param {string} [source="user"] - Quién provoca el cambio (ver 2b).
+ */
+function goToIndex(index, source = "user") {
+  if (!state.cues.length) return;
+  state.index = Math.max(0, Math.min(state.cues.length - 1, index));
   renderCurrentCue();
+  emit("cue", { index: state.index, cue: state.cues[state.index], source });
 }
 
 /* ---------------------------------------------------------------------
@@ -600,8 +656,7 @@ function confirmJump() {
   const targetMs =
     ((hoursWheel.getValue() * 60 + minutesWheel.getValue()) * 60 + secondsWheel.getValue()) * 1000;
 
-  state.index = findCueIndexAt(state.cues, targetMs);
-  renderCurrentCue();
+  goToIndex(findCueIndexAt(state.cues, targetMs), "jump");
 }
 
 /* ---------------------------------------------------------------------
@@ -619,12 +674,15 @@ function resetToUploader() {
   loadToken++; // invalida cualquier lectura de archivo que siga en curso
   state.cues = [];
   state.index = 0;
+  state.file = null;
   dom.reader.hidden = true;
   dom.uploader.hidden = false;
   dom.fileInput.value = ""; // permite volver a elegir el mismo archivo
   dom.tagline.textContent = DEFAULT_TAGLINE; // restaura el subtítulo de la marca
   closeJumpModal(); // por si quedó abierto
   clearError();
+  hideToast();
+  emit("reset");
 }
 
 /* ---------------------------------------------------------------------
@@ -640,6 +698,48 @@ function clearError() {
   dom.error.textContent = "";
   dom.error.classList.remove("is-visible");
 }
+
+/* ---------------------------------------------------------------------
+   6b) AVISO FLOTANTE (toast)
+   Mensaje breve en la parte inferior, con una acción opcional
+   (p. ej. "Empezar desde el principio"). Se anuncia a los lectores de
+   pantalla (región role="status") y no desaparece mientras el usuario
+   tiene el ratón o el foco encima.
+   --------------------------------------------------------------------- */
+let toastTimer = 0;
+let toastDuration = 0;
+
+/**
+ * @param {string} message
+ * @param {{actionLabel?: string, onAction?: Function, duration?: number}} [options]
+ */
+function showToast(message, { actionLabel = "", onAction = null, duration = 6000 } = {}) {
+  dom.toastText.textContent = message;
+  dom.toastAction.textContent = actionLabel;
+  dom.toastAction.hidden = !actionLabel;
+  dom.toastAction.onclick = actionLabel
+    ? () => { hideToast(); onAction?.(); }
+    : null;
+  dom.toast.hidden = false;
+  toastDuration = duration;
+  scheduleToastHide(duration);
+}
+
+function hideToast() {
+  window.clearTimeout(toastTimer);
+  dom.toast.hidden = true;
+}
+
+function scheduleToastHide(delay) {
+  window.clearTimeout(toastTimer);
+  toastTimer = window.setTimeout(hideToast, delay);
+}
+
+// Pausa el cierre automático mientras se interactúa con el aviso.
+["mouseenter", "focusin"].forEach((type) =>
+  dom.toast.addEventListener(type, () => window.clearTimeout(toastTimer)));
+["mouseleave", "focusout"].forEach((type) =>
+  dom.toast.addEventListener(type, () => scheduleToastHide(Math.min(toastDuration, 3000))));
 
 /* ---------------------------------------------------------------------
    7) CARGA Y PROCESADO DEL ARCHIVO
@@ -677,20 +777,7 @@ async function handleFile(file) {
     const buffer = await file.arrayBuffer();
     if (token !== loadToken) return; // llegó otro archivo o se reinició
 
-    const cues = parseSRT(decodeSubtitleBuffer(buffer));
-
-    if (cues.length === 0) {
-      showError("No se encontraron subtítulos válidos en el archivo.");
-      return;
-    }
-
-    // Guardamos en el estado y arrancamos el controlador.
-    state.cues = cues;
-    state.index = 0;
-    // Extrae y muestra el título limpio de la obra en el tagline.
-    dom.tagline.textContent = extractTitleFromFilename(file.name);
-    showReader();
-    renderCurrentCue();
+    openSubtitles(file.name, decodeSubtitleBuffer(buffer));
   } catch (error) {
     // Si la lectura falla (archivo corrupto, permisos, archivo movido, etc.).
     console.error("Captions Reader: error al leer el archivo", error);
@@ -698,6 +785,43 @@ async function handleFile(file) {
       showError("Ocurrió un error al leer el archivo. Inténtalo de nuevo.");
     }
   }
+}
+
+/**
+ * Abre unos subtítulos ya decodificados. Lo usan la carga de archivos, la
+ * lista de recientes y "Abrir con" del sistema operativo (PWA).
+ * @param {string} name - Nombre del archivo (para el título y el id).
+ * @param {string} text - Contenido completo del .srt.
+ * @returns {boolean} true si se abrió; false si no había subtítulos válidos.
+ */
+function openSubtitles(name, text) {
+  clearError();
+  const cues = parseSRT(text);
+
+  if (cues.length === 0) {
+    showError("No se encontraron subtítulos válidos en el archivo.");
+    return false;
+  }
+
+  // Guardamos en el estado y arrancamos el controlador.
+  state.cues = cues;
+  state.index = 0;
+  state.file = {
+    id: makeFileId(name, text),
+    name,
+    // Extrae el título limpio de la obra para el tagline.
+    title: extractTitleFromFilename(name),
+    text,
+  };
+  dom.tagline.textContent = state.file.title;
+  hideToast();
+  showReader();
+
+  // Primero "load" (las funcionalidades preparan lo suyo) y después el
+  // primer "cue", ya con todo listo para reaccionar a él.
+  emit("load", { file: state.file, cues });
+  goToIndex(0, "load");
+  return true;
 }
 
 /* ---------------------------------------------------------------------
@@ -775,12 +899,14 @@ dom.jumpModal.addEventListener("keydown", (event) => {
   dom.jumpModal.close("ok");
 });
 
-// 8.8) Atajos de teclado (solo en estado activo y con el modal cerrado):
+// 8.8) Atajos de teclado (solo en estado activo, con el modal cerrado y
+//      sin estar escribiendo en un campo de texto o un desplegable):
 //       →            avanza un subtítulo.
 //       ←            retrocede un subtítulo.
 //       Espacio      avanza un subtítulo (como la flecha derecha).
 //       Shift+Espacio retrocede un subtítulo (como la flecha izquierda).
 //       C            copia el subtítulo actual.
+//       Las funcionalidades añaden los suyos con addShortcut() (P, V, T, /).
 //       (Si se llegó a un botón navegando con Tab, Espacio activa ESE botón,
 //        como es estándar: p. ej. Espacio sobre "‹" retrocede. Si el foco vino
 //        de un clic de ratón, Espacio conserva el atajo de avanzar.)
@@ -796,10 +922,29 @@ document.addEventListener("keydown", (event) => {
 document.addEventListener("pointerdown", () => { tabNavigation = false; }, true);
 document.addEventListener("focusin", () => { focusFromTab = tabNavigation; });
 
+// Atajos de una tecla (sin Ctrl/Cmd/Alt, para no pisar los del navegador).
+// Se registran por event.key en minúsculas, así respetan la distribución
+// del teclado del usuario (p. ej. "/" es Shift+7 en un teclado español).
+const shortcuts = new Map();
+
+/**
+ * @param {string} key - Valor de event.key en minúsculas ("p", "/", ...).
+ * @param {(event: KeyboardEvent) => void} handler
+ */
+function addShortcut(key, handler) {
+  shortcuts.set(key, handler);
+}
+
+addShortcut("c", copyCurrentCue);
+
 document.addEventListener("keydown", (event) => {
   // Ignora si aún no hay subtítulos cargados o si el modal está abierto
   // (así no interferimos mientras el usuario gira las ruedas).
   if (dom.reader.hidden || dom.jumpModal.open) return;
+
+  // Escribiendo en un campo (p. ej. la búsqueda) o usando un desplegable
+  // (velocidad): las teclas son suyas, no atajos.
+  if (event.target.closest("input, select, textarea")) return;
 
   // Navegación con flechas.
   if (event.key === "ArrowLeft") navigate(-1);
@@ -808,16 +953,16 @@ document.addEventListener("keydown", (event) => {
   // Barra espaciadora: Shift+Espacio retrocede; Espacio solo avanza.
   // event.code === "Space" detecta la tecla sin importar el navegador.
   // Se omite si se llegó a un control con Tab: el navegador lo activará.
-  const tabFocusedControl =
-    focusFromTab && event.target.closest("button, input, select, textarea");
+  const tabFocusedControl = focusFromTab && event.target.closest("button");
   if (event.code === "Space" && !tabFocusedControl) {
     event.preventDefault(); // evita el desplazamiento de la página
     navigate(event.shiftKey ? -1 : 1);
   }
 
-  // Tecla "C" para copiar (sin Ctrl/Cmd/Alt, para no pisar el copiar nativo).
-  if (event.code === "KeyC" && !event.ctrlKey && !event.metaKey && !event.altKey) {
+  // Atajos de una tecla: "C" (copiar) y los de las funcionalidades.
+  const shortcut = shortcuts.get(event.key.toLowerCase());
+  if (shortcut && !event.ctrlKey && !event.metaKey && !event.altKey) {
     event.preventDefault();
-    copyCurrentCue();
+    shortcut(event);
   }
 });
