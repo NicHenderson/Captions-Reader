@@ -40,6 +40,8 @@ const dom = {
   wheelHours:   document.getElementById("wheelHours"),
   wheelMinutes: document.getElementById("wheelMinutes"),
   wheelSeconds: document.getElementById("wheelSeconds"),
+  timePicker:   document.getElementById("timePicker"),
+  wheelRing:    document.getElementById("wheelRing"),
 };
 
 // Texto que muestra el tagline cuando no hay archivo cargado.
@@ -475,13 +477,97 @@ function ensureWheels() {
   secondsWheel = new WheelPicker(dom.wheelSeconds, 60); // 00–59
 }
 
+/* ---------------------------------------------------------------------
+   RUEDA ACTIVA: anillo de foco propio y ← / → entre ruedas
+   Un único anillo (.picker__ring) marca la rueda activa y se desliza de
+   una a otra. Se muestra cuando el usuario llega con el teclado (Tab,
+   ← / →) o empieza a usar una rueda con el ratón o el dedo (arrastre,
+   clic, rueda del ratón), y se oculta cuando el foco sale de las ruedas.
+   --------------------------------------------------------------------- */
+const WHEELS = [dom.wheelHours, dom.wheelMinutes, dom.wheelSeconds];
+const WHEEL_KEYS = ["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End"];
+
+/** Coloca el anillo sobre "wheel" y la marca como activa. */
+function showWheelRing(wheel) {
+  const ring = dom.wheelRing;
+  const wasHidden = !dom.timePicker.classList.contains("has-ring");
+
+  // Si estaba oculto, aparece directamente en su sitio (sin deslizarse
+  // desde la posición anterior): se desactiva la transición un instante.
+  if (wasHidden) ring.style.transition = "none";
+  ring.style.setProperty("--ring-x", `${wheel.offsetLeft}px`);
+  ring.style.setProperty("--ring-w", `${wheel.offsetWidth}px`);
+  if (wasHidden) {
+    void ring.offsetWidth; // aplica la posición antes de reactivar la transición
+    ring.style.transition = "";
+  }
+
+  dom.timePicker.classList.add("has-ring");
+  WHEELS.forEach((w) => w.classList.toggle("is-engaged", w === wheel));
+}
+
+/** Oculta el anillo y desmarca todas las ruedas. */
+function hideWheelRing() {
+  dom.timePicker.classList.remove("has-ring");
+  WHEELS.forEach((w) => w.classList.remove("is-engaged"));
+}
+
+WHEELS.forEach((wheel) => {
+  // Llegada con el teclado (Tab / Shift+Tab, o el foco inicial al abrir el
+  // diálogo con Enter). Con un clic, :focus-visible no se cumple y el anillo
+  // lo muestra el "pointerdown" de abajo.
+  wheel.addEventListener("focus", () => {
+    if (wheel.matches(":focus-visible")) showWheelRing(wheel);
+  });
+
+  // Empieza a moverla con el ratón o el dedo.
+  wheel.addEventListener("pointerdown", () => showWheelRing(wheel));
+
+  // Rueda del ratón sobre una rueda que no tenía el foco: se le da, para
+  // que las teclas actúen después sobre la misma rueda que se ve marcada.
+  wheel.addEventListener("wheel", () => {
+    if (document.activeElement !== wheel) wheel.focus({ preventScroll: true });
+    showWheelRing(wheel);
+  }, { passive: true });
+
+  // El foco sale de las ruedas (a un botón o porque se cierra el diálogo).
+  wheel.addEventListener("blur", (event) => {
+    if (!WHEELS.includes(event.relatedTarget)) hideWheelRing();
+  });
+});
+
+// Teclado dentro del selector (solo existe con el diálogo abierto):
+//   ← / →  pasan a la rueda anterior / siguiente (se detienen en los extremos).
+//   ↑ ↓ RePág AvPág Inicio Fin  (los procesa WheelPicker) también muestran el
+//   anillo, por si la rueda tenía el foco por un clic sin arrastre.
+dom.timePicker.addEventListener("keydown", (event) => {
+  const index = WHEELS.indexOf(event.target);
+  if (index === -1) return;
+
+  if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+    event.preventDefault();
+    const next = WHEELS[index + (event.key === "ArrowRight" ? 1 : -1)];
+    if (!next) return;
+    next.focus();
+    showWheelRing(next);
+  } else if (WHEEL_KEYS.includes(event.key)) {
+    showWheelRing(event.target);
+  }
+});
+
+// Si cambia el tamaño de la ventana con el anillo visible, se recoloca.
+window.addEventListener("resize", () => {
+  const engaged = WHEELS.find((w) => w.classList.contains("is-engaged"));
+  if (engaged) showWheelRing(engaged);
+});
+
 /**
  * Abre el modal. Las tres ruedas siempre parten desde 0.
  * showModal() de <dialog> se encarga de: llevar el foco dentro (a la rueda
  * con "autofocus"), atraparlo mientras está abierto, volverlo inerte el
  * resto de la página, cerrar con Escape y devolver el foco al cerrar.
  */
-function openJumpModal() {
+function openJumpModal(event) {
   ensureWheels();
 
   // Reinicio limpio: cada vez que se abre, todas las ruedas vuelven a 0.
@@ -493,6 +579,12 @@ function openJumpModal() {
   // conserve el "ok" de un salto anterior.
   dom.jumpModal.returnValue = "";
   dom.jumpModal.showModal();
+
+  // Anillo inicial según CÓMO se abrió: con teclado (Enter/Espacio sobre el
+  // botón, event.detail === 0) se marca la rueda de horas; con un clic, no
+  // hay anillo hasta que el usuario toque una rueda.
+  if (event && event.detail === 0) showWheelRing(dom.wheelHours);
+  else hideWheelRing();
 }
 
 /** Cierra el modal sin realizar ninguna acción. */

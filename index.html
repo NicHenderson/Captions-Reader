@@ -14,7 +14,7 @@
     rel="stylesheet"
   />
 
-  <link rel="stylesheet" href="styles.css?v=3" />
+  <link rel="stylesheet" href="styles.css?v=4" />
   <link rel="icon" type="image/png" href="CaptionsReader-Icon.ico">
 </head>
 
@@ -133,12 +133,14 @@
          en dialog.returnValue ("cancel" u "ok"). -->
     <form class="modal__dialog" method="dialog">
       <h2 class="modal__title" id="jumpTitle">Saltar a marca de tiempo</h2>
-      <p class="modal__hint">Gira las ruedas (o usa ↑ ↓) para elegir <strong>hora&nbsp;:&nbsp;min&nbsp;:&nbsp;seg</strong></p>
+      <p class="modal__hint">Gira las ruedas (o usa ↑ ↓ ← →) para elegir <strong>hora&nbsp;:&nbsp;min&nbsp;:&nbsp;seg</strong></p>
 
       <!-- Selector de tiempo estilo iOS (tres rodillos cilíndricos) -->
       <div class="picker" id="timePicker">
         <!-- Zona de enfoque central (franja con líneas y desenfoque) -->
         <div class="picker__focus" aria-hidden="true"></div>
+        <!-- Anillo que marca la rueda activa (lo mueve JavaScript) -->
+        <div class="picker__ring" id="wheelRing" aria-hidden="true"></div>
 
         <!-- Cada .wheel recibe sus números por JavaScript.
              "autofocus": al abrir, el foco empieza en la rueda de horas. -->
@@ -167,7 +169,7 @@
        captions-core.js (lógica pura) va primero porque app.js usa sus funciones.
        Al no usar import/export, funciona al abrir el .html directamente
        (sin servidor local ni problemas de CORS por file://). -->
-  <script src="captions-core.js?v=3" defer></script>
-  <script src="app.js?v=3" defer></script>
+  <script src="captions-core.js?v=4" defer></script>
+  <script src="app.js?v=4" defer></script>
 </body>
 </html>

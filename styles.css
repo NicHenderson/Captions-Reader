@@ -537,6 +537,15 @@ body {
 }
 .modal__btn--solid:hover { background: var(--sage); border-color: var(--sage); }
 
+/* Foco por teclado de los botones: anillo menta con halo (mismo lenguaje
+   visual que el anillo de las ruedas) en lugar del contorno del navegador. */
+.modal__btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--ink),
+              0 0 0 4px var(--mint),
+              0 0 18px rgba(185, 245, 216, 0.35);
+}
+
 @keyframes fade {
   from { opacity: 0; }
   to   { opacity: 1; }
@@ -589,6 +598,35 @@ body {
   z-index: 2;
 }
 
+/* Anillo de la rueda activa. Uno solo para todo el selector: JS lo coloca
+   sobre la rueda activa (--ring-x / --ring-w) y, al cambiar de rueda, se
+   DESLIZA hasta la nueva. Aparece al llegar con el teclado o al empezar
+   a mover una rueda con el ratón / dedo (clase .has-ring en el .picker). */
+.picker__ring {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: var(--ring-w, 60px);
+  height: 48px;                  /* ITEM_HEIGHT + 4px de aire arriba y abajo */
+  border: 1.5px solid var(--mint);
+  border-radius: 12px;
+  background: rgba(185, 245, 216, 0.06);
+  box-shadow: 0 0 0 4px rgba(185, 245, 216, 0.10),   /* aura exterior */
+              0 0 22px rgba(185, 245, 216, 0.35),    /* brillo */
+              inset 0 0 14px rgba(185, 245, 216, 0.14);
+  opacity: 0;
+  transform: translate(var(--ring-x, 0px), -50%) scale(0.86);
+  transition: transform 0.38s var(--ease),
+              width 0.38s var(--ease),
+              opacity 0.2s var(--ease);
+  pointer-events: none;
+  z-index: 3;
+}
+.picker.has-ring .picker__ring {
+  opacity: 1;
+  transform: translate(var(--ring-x, 0px), -50%) scale(1);
+}
+
 /* Cada rueda (rodillo cilíndrico independiente) */
 .wheel {
   position: relative;
@@ -596,17 +634,16 @@ body {
   height: 100%;
   transform-style: preserve-3d;  /* respeta el 3D de los números hijos */
   cursor: grab;
-  outline: none;
-  border-radius: 10px;
-  transition: background 0.2s var(--ease), box-shadow 0.2s var(--ease);
+  outline: none;                 /* el foco lo indica .picker__ring */
+  border-radius: 12px;
+  transition: background 0.3s var(--ease);
 }
 .wheel:active { cursor: grabbing; }
 
-/* Indicador de foco solo para teclado. Se dibuja HACIA DENTRO (inset)
-   porque el .picker recorta (overflow: hidden) lo que sobresale. */
-.wheel:focus-visible {
-  background: rgba(185, 245, 216, 0.06);
-  box-shadow: inset 0 0 0 2px var(--mint);
+/* Rueda activa: la columna se ilumina suavemente de arriba abajo... */
+.wheel.is-engaged {
+  background: linear-gradient(to bottom,
+      transparent 6%, rgba(185, 245, 216, 0.08) 50%, transparent 94%);
 }
 
 /* Cada número impreso en el cilindro */
@@ -629,6 +666,11 @@ body {
 }
 /* El número seleccionado (en el centro) resalta en menta */
 .wheel__item.is-selected { color: var(--mint); }
+/* ...y su número central brilla más que el de las otras ruedas. */
+.wheel.is-engaged .wheel__item.is-selected {
+  color: var(--frost);
+  text-shadow: 0 0 14px rgba(185, 245, 216, 0.6);
+}
 
 /* Separadores ":" entre ruedas */
 .picker__sep {

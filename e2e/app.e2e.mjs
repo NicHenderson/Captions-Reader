@@ -296,3 +296,99 @@ test("arrastrar una rueda con el puntero cambia su valor sin cerrar el diálogo"
   assert.ok(Number(await wheelValue("wheelSeconds")) > 0);
   assert.ok(await modalOpen());
 });
+
+/* ---------- Rueda activa: ← / → y anillo de foco propio ---------- */
+
+const ringShown = () => page.evaluate(() => document.getElementById("timePicker").classList.contains("has-ring"));
+const engagedId = () => page.evaluate(() => document.querySelector(".wheel.is-engaged")?.id ?? null);
+// Centro horizontal del anillo respecto al de su rueda (≈ 0 si está alineado).
+const ringOffsetX = (id) => page.evaluate((wheelId) => {
+  const ring = document.getElementById("wheelRing").getBoundingClientRect();
+  const wheel = document.getElementById(wheelId).getBoundingClientRect();
+  return (ring.left + ring.width / 2) - (wheel.left + wheel.width / 2);
+}, id);
+const ringSettled = () => page.waitForTimeout(500); // transición de 0,38 s
+
+test("← / → pasan de una rueda a otra y se detienen en los extremos", async () => {
+  await load("formatos-variados.srt");
+  await page.focus("#jumpBtn");
+  await page.keyboard.press("Enter");
+  assert.equal(await activeId(), "wheelHours");
+  await page.keyboard.press("ArrowLeft");
+  assert.equal(await activeId(), "wheelHours", "← en la primera rueda no hace nada");
+  await page.keyboard.press("ArrowRight");
+  assert.equal(await activeId(), "wheelMinutes");
+  await page.keyboard.press("ArrowRight");
+  assert.equal(await activeId(), "wheelSeconds");
+  await page.keyboard.press("ArrowRight");
+  assert.equal(await activeId(), "wheelSeconds", "→ en la última rueda no hace nada");
+  await page.keyboard.press("ArrowLeft");
+  assert.equal(await activeId(), "wheelMinutes");
+  // Con el diálogo abierto, ← / → no cambian de subtítulo.
+  assert.equal(await counter(), "1 / 4");
+});
+
+test("anillo con teclado: aparece al abrir con Enter y se desliza a la rueda activa", async () => {
+  await load("formatos-variados.srt");
+  await page.focus("#jumpBtn");
+  await page.keyboard.press("Enter");
+  assert.ok(await ringShown());
+  assert.equal(await engagedId(), "wheelHours");
+  await page.keyboard.press("ArrowRight");
+  await ringSettled();
+  assert.equal(await engagedId(), "wheelMinutes");
+  assert.ok(Math.abs(await ringOffsetX("wheelMinutes")) < 1, "anillo alineado con minutos");
+  // No hay contorno por defecto del navegador en las ruedas.
+  assert.equal(await page.evaluate(() => getComputedStyle(document.activeElement).outlineStyle), "none");
+});
+
+test("anillo con ratón: no aparece al abrir con clic, sí al arrastrar o girar una rueda", async () => {
+  await load("formatos-variados.srt");
+  await page.click("#jumpBtn");
+  assert.equal(await ringShown(), false, "sin interacción con las ruedas no hay anillo");
+
+  const box = await page.locator("#wheelSeconds").boundingBox();
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  assert.ok(await ringShown(), "aparece al empezar a arrastrar");
+  assert.equal(await engagedId(), "wheelSeconds");
+  await page.mouse.up();
+
+  const hours = await page.locator("#wheelHours").boundingBox();
+  await page.mouse.move(hours.x + hours.width / 2, hours.y + hours.height / 2);
+  await page.mouse.wheel(0, 100);
+  await ringSettled();
+  assert.equal(await engagedId(), "wheelHours", "la rueda del ratón también la activa");
+  assert.equal(await activeId(), "wheelHours", "y le da el foco, para que las teclas actúen sobre ella");
+  assert.ok(Math.abs(await ringOffsetX("wheelHours")) < 1);
+
+  // Las flechas siguen funcionando sobre la rueda marcada.
+  await page.keyboard.press("ArrowRight");
+  assert.equal(await engagedId(), "wheelMinutes");
+});
+
+test("anillo: abrir con clic tras cerrar con Escape no lo muestra", async () => {
+  await load("formatos-variados.srt");
+  await page.focus("#jumpBtn");
+  await page.keyboard.press("Enter");
+  await page.keyboard.press("Escape");
+  await settle();
+  await page.click("#jumpBtn");
+  assert.equal(await ringShown(), false);
+});
+
+test("anillo: se oculta al salir de las ruedas con Tab y vuelve con Shift+Tab", async () => {
+  await load("formatos-variados.srt");
+  await page.focus("#jumpBtn");
+  await page.keyboard.press("Enter");
+  await page.keyboard.press("ArrowRight");
+  await page.keyboard.press("ArrowRight"); // segundos
+  await page.keyboard.press("Tab"); // Cancelar
+  assert.equal(await ringShown(), false);
+  assert.equal(await page.evaluate(() => document.activeElement.value), "cancel");
+  // Los botones también usan un foco propio (sin contorno del navegador).
+  assert.equal(await page.evaluate(() => getComputedStyle(document.activeElement).outlineStyle), "none");
+  await page.keyboard.press("Shift+Tab");
+  assert.ok(await ringShown());
+  assert.equal(await engagedId(), "wheelSeconds");
+});
