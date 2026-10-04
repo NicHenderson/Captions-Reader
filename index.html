@@ -14,7 +14,7 @@
     rel="stylesheet"
   />
 
-  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="styles.css?v=2" />
   <link rel="icon" type="image/png" href="CaptionsReader-Icon.ico">
 </head>
 
@@ -161,10 +161,13 @@
   </dialog>
 
   <!-- Scripts clásicos con "defer": se ejecutan en orden, con el DOM ya listo.
+       El "?v=N" de CSS y JS evita que el navegador mezcle este HTML con
+       versiones antiguas guardadas en caché (GitHub Pages las cachea unos
+       minutos). Hay que subir el número cada vez que se publiquen cambios.
        captions-core.js (lógica pura) va primero porque app.js usa sus funciones.
        Al no usar import/export, funciona al abrir el .html directamente
        (sin servidor local ni problemas de CORS por file://). -->
-  <script src="captions-core.js" defer></script>
-  <script src="app.js" defer></script>
+  <script src="captions-core.js?v=2" defer></script>
+  <script src="app.js?v=2" defer></script>
 </body>
 </html>
