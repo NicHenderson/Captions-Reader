@@ -1,0 +1,20 @@
+1
+00:00:01,000 --> 00:00:03,000
+<i>Primera línea</i>
+   
+2
+0:00:05.500 --> 0:00:07.000
+Milisegundos con punto
+y hora de una cifra
+	
+3
+00:00:08,000 --> 00:00:09,000
+[música intrigante]
+
+4
+00:01:00,000 --> 00:01:02,000
+{\an8}Un minuto &amp; algo
+
+5
+00:02:00,000 --> 00:02:03,000
+Dos minutos

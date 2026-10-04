@@ -168,13 +168,16 @@ body {
               transform 0.3s var(--ease);
 }
 
-/* Estados hover y arrastre activo (clase añadida por JS: .is-dragover) */
+/* Estados hover, arrastre activo (clase añadida por JS: .is-dragover) y
+   foco por teclado en el input invisible (Tab hasta la zona de carga). */
 .dropzone:hover,
-.dropzone.is-dragover {
+.dropzone.is-dragover,
+.dropzone:has(.dropzone__input:focus-visible) {
   border-color: var(--mint);
   background: rgba(185, 245, 216, 0.07);
   transform: translateY(-2px);
 }
+.dropzone:has(.dropzone__input:focus-visible) { border-style: solid; }
 
 .dropzone__icon {
   font-size: 2.6rem;
@@ -452,28 +455,29 @@ body {
    MODAL — Saltar a marca de tiempo
    =================================================================== */
 .modal {
-  position: fixed;
-  inset: 0;
-  z-index: 50;
-  display: grid;
-  place-items: center;
-  padding: 1.5rem;
+  /* El <dialog> nativo se centra solo en la "top layer" (margin: auto).
+     Se neutralizan los estilos del navegador: el aspecto lo da el formulario
+     interior (.modal__dialog), que ocupa todo el diálogo. Así, un clic cuyo
+     destino sea el propio <dialog> solo puede venir del fondo (::backdrop). */
+  width: min(380px, calc(100% - 3rem));
+  max-width: none;
+  margin: auto;
+  padding: 0;
+  color: var(--frost);
+  background: transparent;
+  border: none;
+  overflow: visible; /* deja ver la sombra del cuadro */
 }
 
-/* Fondo oscurecido (capa de overlay) */
-.modal__overlay {
-  position: absolute;
-  inset: 0;
+/* Fondo oscurecido (lo pinta el navegador detrás del diálogo modal) */
+.modal::backdrop {
   background: rgba(13, 14, 11, 0.7);
   backdrop-filter: blur(3px);
   animation: fade 0.25s var(--ease);
 }
 
-/* Cuadro de diálogo */
+/* Cuadro de diálogo (el <form method="dialog">) */
 .modal__dialog {
-  position: relative; /* por encima del overlay */
-  width: 100%;
-  max-width: 380px;
   display: flex;
   flex-direction: column;
   gap: 0.8rem;
@@ -593,8 +597,17 @@ body {
   transform-style: preserve-3d;  /* respeta el 3D de los números hijos */
   cursor: grab;
   outline: none;
+  border-radius: 10px;
+  transition: background 0.2s var(--ease), box-shadow 0.2s var(--ease);
 }
 .wheel:active { cursor: grabbing; }
+
+/* Indicador de foco solo para teclado. Se dibuja HACIA DENTRO (inset)
+   porque el .picker recorta (overflow: hidden) lo que sobresale. */
+.wheel:focus-visible {
+  background: rgba(185, 245, 216, 0.06);
+  box-shadow: inset 0 0 0 2px var(--mint);
+}
 
 /* Cada número impreso en el cilindro */
 .wheel__item {

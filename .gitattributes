@@ -1,0 +1,2 @@
+# Los .srt de prueba deben conservar sus bytes exactos (codificación y \r\n).
+test/fixtures/*.srt binary

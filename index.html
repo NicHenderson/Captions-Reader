@@ -125,25 +125,25 @@
   </main>
 
   <!-- ============ MODAL: SALTAR A MARCA DE TIEMPO ============
-       Inicia oculto con "hidden". role="dialog" + aria-modal para accesibilidad.
-       El overlay y el cuadro son hermanos para poder cerrar al hacer clic fuera. -->
-  <div class="modal" id="jumpModal" role="dialog" aria-modal="true" aria-labelledby="jumpTitle" hidden>
-    <!-- Fondo oscuro semitransparente; un clic aquí cierra el modal -->
-    <div class="modal__overlay" id="jumpOverlay"></div>
-
-    <!-- Cuadro de diálogo -->
-    <div class="modal__dialog">
+       <dialog> nativo abierto con showModal(): aporta foco atrapado,
+       fondo inerte, cierre con Escape y devolución del foco al cerrar.
+       El fondo oscuro es su pseudo-elemento ::backdrop (ver CSS). -->
+  <dialog class="modal" id="jumpModal" aria-labelledby="jumpTitle">
+    <!-- method="dialog": cada botón cierra el diálogo y deja su "value"
+         en dialog.returnValue ("cancel" u "ok"). -->
+    <form class="modal__dialog" method="dialog">
       <h2 class="modal__title" id="jumpTitle">Saltar a marca de tiempo</h2>
-      <p class="modal__hint">Gira las ruedas para elegir <strong>hora&nbsp;:&nbsp;min&nbsp;:&nbsp;seg</strong></p>
+      <p class="modal__hint">Gira las ruedas (o usa ↑ ↓) para elegir <strong>hora&nbsp;:&nbsp;min&nbsp;:&nbsp;seg</strong></p>
 
       <!-- Selector de tiempo estilo iOS (tres rodillos cilíndricos) -->
       <div class="picker" id="timePicker">
         <!-- Zona de enfoque central (franja con líneas y desenfoque) -->
         <div class="picker__focus" aria-hidden="true"></div>
 
-        <!-- Cada .wheel recibe sus números por JavaScript -->
+        <!-- Cada .wheel recibe sus números por JavaScript.
+             "autofocus": al abrir, el foco empieza en la rueda de horas. -->
         <div class="wheel" id="wheelHours" data-unit="horas"
-             role="slider" aria-label="Horas" tabindex="0"></div>
+             role="slider" aria-label="Horas" tabindex="0" autofocus></div>
         <span class="picker__sep" aria-hidden="true">:</span>
         <div class="wheel" id="wheelMinutes" data-unit="minutos"
              role="slider" aria-label="Minutos" tabindex="0"></div>
@@ -154,15 +154,17 @@
 
       <!-- Botones de acción -->
       <div class="modal__actions">
-        <button class="modal__btn modal__btn--ghost" id="jumpCancel" type="button">Cancelar</button>
-        <button class="modal__btn modal__btn--solid" id="jumpAccept" type="button">Aceptar</button>
+        <button class="modal__btn modal__btn--ghost" value="cancel">Cancelar</button>
+        <button class="modal__btn modal__btn--solid" value="ok">Aceptar</button>
       </div>
-    </div>
-  </div>
+    </form>
+  </dialog>
 
-  <!-- Script clásico con "defer": el DOM ya está listo al ejecutarse y,
-       al no usar import/export, funciona al abrir el .html directamente
+  <!-- Scripts clásicos con "defer": se ejecutan en orden, con el DOM ya listo.
+       captions-core.js (lógica pura) va primero porque app.js usa sus funciones.
+       Al no usar import/export, funciona al abrir el .html directamente
        (sin servidor local ni problemas de CORS por file://). -->
+  <script src="captions-core.js" defer></script>
   <script src="app.js" defer></script>
 </body>
 </html>
