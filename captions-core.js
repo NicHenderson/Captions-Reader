@@ -392,7 +392,7 @@ function parseSRT(raw) {
 
 /* ---------------------------------------------------------------------
    6) UTILIDADES PARA LAS FUNCIONALIDADES
-   (recientes, reproducción, transcripción y lectura en voz alta)
+   (recientes, reproducción y transcripción)
    --------------------------------------------------------------------- */
 
 /**
@@ -510,51 +510,6 @@ function findMatches(text, query, prepared = prepareSearch(text)) {
   return ranges;
 }
 
-/* Palabras muy frecuentes y propias de cada idioma (sin tildes). Se evitan
-   las que comparten varios idiomas ("a", "no", "de", "que"...). */
-const LANGUAGE_HINTS = {
-  es: ["el", "la", "los", "las", "y", "del", "una", "pero", "porque", "esto", "eso",
-       "yo", "usted", "estoy", "hay", "muy", "ahora", "bien", "quiero", "vamos", "tengo", "senor"],
-  en: ["the", "and", "you", "is", "are", "was", "what", "this", "that", "it", "my",
-       "your", "have", "of", "to", "in", "we", "he", "she", "don", "just", "know"],
-  fr: ["le", "les", "et", "est", "je", "vous", "nous", "pas", "une", "des", "du",
-       "ce", "mais", "avec", "pour", "oui", "tres", "suis", "ca", "c"],
-  pt: ["o", "os", "do", "da", "dos", "das", "em", "um", "uma", "nao", "voce", "isso",
-       "eu", "muito", "agora", "obrigado", "entao", "ate", "sao"],
-  it: ["il", "gli", "che", "sono", "sei", "perche", "questo", "questa", "anche",
-       "molto", "ciao", "grazie", "cosa", "della", "sto", "ho"],
-  de: ["der", "die", "das", "und", "ist", "nicht", "ich", "sie", "wir", "ein",
-       "eine", "zu", "mit", "auf", "den", "dem", "ja", "auch"],
-};
-
-/**
- * Detecta el idioma predominante de un conjunto de textos contando
- * palabras características. Devuelve un código ("es", "en", "fr", "pt",
- * "it", "de") o null si no hay evidencia suficiente.
- * @param {string[]} texts
- * @returns {string|null}
- */
-function detectLanguage(texts) {
-  const words = Array.from(texts.join(" ")).map(foldChar).join("").match(/[a-z]+/g) || [];
-  const scores = {};
-  for (const lang of Object.keys(LANGUAGE_HINTS)) scores[lang] = 0;
-  const lookup = new Map();
-  for (const [lang, list] of Object.entries(LANGUAGE_HINTS)) {
-    for (const w of list) lookup.set(w, [...(lookup.get(w) || []), lang]);
-  }
-  for (const w of words) {
-    for (const lang of lookup.get(w) || []) scores[lang]++;
-  }
-  const ranked = Object.entries(scores).sort((a, b) => b[1] - a[1]);
-  const [best, second] = ranked;
-  // Exige evidencia suficiente y una ventaja clara sobre el segundo: al
-  // menos 3 indicios con un 30 % de ventaja, o 2 si ningún otro idioma
-  // tiene ninguno (archivos muy cortos).
-  const clearWinner = best[1] >= 3 && best[1] >= second[1] * 1.3;
-  const shortButUnambiguous = best[1] >= 2 && second[1] === 0;
-  return clearWinner || shortButUnambiguous ? best[0] : null;
-}
-
 /* ---------------------------------------------------------------------
    EXPORTACIÓN PARA NODE (tests). En el navegador "module" no existe y
    las funciones simplemente quedan disponibles para app.js.
@@ -564,7 +519,6 @@ if (typeof module !== "undefined" && module.exports) {
     cleanText,
     decodeEntities,
     decodeSubtitleBuffer,
-    detectLanguage,
     extractTitleFromFilename,
     findCueIndexAt,
     findCueIndexBefore,

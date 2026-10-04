@@ -31,7 +31,6 @@ const VERSIONED_FILES = [
   "features/recents.js",
   "features/playback.js",
   "features/transcript.js",
-  "features/speech.js",
   "features/pwa.js",
 ];
 

@@ -5,7 +5,7 @@
   <!-- Diseño responsive: la app se adapta a móvil y escritorio -->
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Captions Reader</title>
-  <meta name="description" content="Lector de subtítulos .srt: navega, busca, reproduce y escucha subtítulos, también sin conexión." />
+  <meta name="description" content="Lector de subtítulos .srt: navega, busca y reproduce subtítulos, también sin conexión." />
   <meta name="theme-color" content="#1D1E18" />
 
   <!-- PWA: instalable y usable sin conexión (solo al servirse por http/https) -->
@@ -20,7 +20,7 @@
     rel="stylesheet"
   />
 
-  <link rel="stylesheet" href="styles.css?v=5" />
+  <link rel="stylesheet" href="styles.css?v=6" />
   <link rel="icon" type="image/png" href="CaptionsReader-Icon.ico">
 </head>
 
@@ -109,7 +109,7 @@
           <div class="progress__bar" id="progressBar"></div>
         </div>
 
-        <!-- Barra de reproducción: play/pausa, velocidad y lectura en voz alta -->
+        <!-- Barra de reproducción: play/pausa y velocidad -->
         <div class="playbar" role="group" aria-label="Reproducción">
           <button class="action action--play" id="playBtn" type="button"
                   title="Reproducir / pausar (P)">
@@ -122,7 +122,7 @@
             <span class="action__label" id="playLabel">Reproducir</span>
           </button>
 
-          <label class="speed" title="Velocidad de la reproducción y de la voz">
+          <label class="speed" title="Velocidad de la reproducción">
             <span class="visually-hidden">Velocidad</span>
             <select class="speed__select" id="speedSelect">
               <option value="0.5">0,5×</option>
@@ -133,17 +133,6 @@
               <option value="2">2×</option>
             </select>
           </label>
-
-          <!-- Oculto si el navegador no tiene síntesis de voz -->
-          <button class="action" id="voiceBtn" type="button" aria-pressed="false"
-                  title="Leer en voz alta (V)" hidden>
-            <svg class="action__icon" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
-              <path d="M4 9v6h4l5 4V5L8 9H4z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
-              <path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12" fill="none" stroke="currentColor"
-                    stroke-width="2" stroke-linecap="round"/>
-            </svg>
-            <span class="action__label">Voz</span>
-          </button>
         </div>
 
         <!-- Fila de acciones: copiar, saltar a una marca de tiempo y transcripción -->
@@ -267,12 +256,11 @@
        las funcionalidades de features/ van después porque usan la API de app.js.
        Al no usar import/export, funciona al abrir el .html directamente
        (sin servidor local ni problemas de CORS por file://). -->
-  <script src="captions-core.js?v=5" defer></script>
-  <script src="app.js?v=5" defer></script>
-  <script src="features/recents.js?v=5" defer></script>
-  <script src="features/playback.js?v=5" defer></script>
-  <script src="features/transcript.js?v=5" defer></script>
-  <script src="features/speech.js?v=5" defer></script>
-  <script src="features/pwa.js?v=5" defer></script>
+  <script src="captions-core.js?v=6" defer></script>
+  <script src="app.js?v=6" defer></script>
+  <script src="features/recents.js?v=6" defer></script>
+  <script src="features/playback.js?v=6" defer></script>
+  <script src="features/transcript.js?v=6" defer></script>
+  <script src="features/pwa.js?v=6" defer></script>
 </body>
 </html>

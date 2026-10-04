@@ -99,10 +99,6 @@ function emit(type, detail) {
   }
 }
 
-// Punto de encuentro entre funcionalidades (p. ej. la reproducción pregunta
-// a la voz si sigue hablando). Cada archivo de features/ registra aquí lo suyo.
-const features = {};
-
 /* ---------------------------------------------------------------------
    3) RENDERIZADO DE LA INTERFAZ
    --------------------------------------------------------------------- */

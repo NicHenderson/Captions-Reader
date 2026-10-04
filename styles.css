@@ -524,8 +524,7 @@ body {
 }
 .action__icon { display: block; }
 
-/* Botones de alternancia activos (Voz) y reproducción en curso */
-.action[aria-pressed="true"],
+/* Botón activo: transcripción abierta y reproducción en curso */
 .action[aria-expanded="true"],
 .action--play.is-playing {
   color: var(--ink);

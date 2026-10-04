@@ -14,9 +14,6 @@
      atenúa (no hay diálogo en ese tramo).
    · Moverse a mano (flechas, Saltar a, transcripción) mientras reproduce
      continúa desde el subtítulo elegido.
-   · Otras funcionalidades pueden pedir que se ESPERE antes de pasar al
-     siguiente subtítulo (la voz lo usa para no cortar una frase):
-     features.playback.addHold(() => estaHablando).
    · Atajo: P.
    ===================================================================== */
 
@@ -43,7 +40,6 @@
   let frame = 0;        // id de requestAnimationFrame
   let timer = 0;        // id de setTimeout (pestaña oculta)
   let shownSecond = -1; // para repintar el reloj solo cuando cambia
-  const holds = new Set();
 
   /* ---------------- Velocidad (se recuerda entre visitas) ---------------- */
   try {
@@ -58,8 +54,6 @@
   });
 
   /* ---------------- Motor ---------------- */
-  const isHeld = () => [...holds].some((hold) => hold());
-
   function scheduleStep() {
     if (!playing) return;
     if (document.hidden) timer = window.setTimeout(step, HIDDEN_TICK_MS);
@@ -84,26 +78,18 @@
 
     const { cues } = state;
     let index = state.index;
-    const next = cues[index + 1];
-    const held = isHeld();
-
-    // Avanza el reloj. Si alguien pide esperar, se detiene justo antes de
-    // pasar al siguiente subtítulo hasta que deje de pedirlo.
     clockMs += elapsed;
-    if (held && next && clockMs >= next.startMs) clockMs = next.startMs;
 
-    if (!held) {
-      // Puede saltar varios de golpe (p. ej. tras volver a la pestaña).
-      const target = findCueIndexBefore(cues, clockMs);
-      if (target > index) {
-        goToIndex(target, "playback");
-        index = target;
-      }
+    // Puede saltar varios de golpe (p. ej. tras volver a la pestaña).
+    const target = findCueIndexBefore(cues, clockMs);
+    if (target > index) {
+      goToIndex(target, "playback");
+      index = target;
     }
 
     const cue = cues[index];
     const isLast = index === cues.length - 1;
-    if (isLast && clockMs >= cue.endMs && !held) {
+    if (isLast && clockMs >= cue.endMs) {
       finish();
       return;
     }
@@ -201,12 +187,4 @@
     cancelStep();
     scheduleStep();
   });
-
-  features.playback = {
-    addHold: (fn) => holds.add(fn),
-    getSpeed,
-    isPlaying: () => playing,
-    play,
-    pause,
-  };
 })();

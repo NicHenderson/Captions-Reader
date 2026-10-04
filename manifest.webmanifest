@@ -1,7 +1,7 @@
 {
   "name": "Captions Reader",
   "short_name": "Captions",
-  "description": "Lector de subtítulos .srt: navega, busca, reproduce y escucha subtítulos, también sin conexión.",
+  "description": "Lector de subtítulos .srt: navega, busca y reproduce subtítulos, también sin conexión.",
   "lang": "es",
   "dir": "ltr",
   "start_url": "./",

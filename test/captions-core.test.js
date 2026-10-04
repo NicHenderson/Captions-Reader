@@ -11,7 +11,6 @@ const path = require("node:path");
 const {
   cleanText,
   decodeSubtitleBuffer,
-  detectLanguage,
   extractTitleFromFilename,
   findCueIndexAt,
   findCueIndexBefore,
@@ -234,33 +233,5 @@ describe("findMatches (búsqueda en la transcripción)", () => {
   test("consulta vacía o sin coincidencias", () => {
     assert.deepEqual(findMatches("hola", "   "), []);
     assert.deepEqual(findMatches("hola", "adios"), []);
-  });
-});
-
-describe("detectLanguage", () => {
-  test("reconoce idiomas habituales", () => {
-    assert.equal(detectLanguage(["¿Qué tal, señor? Yo estoy bien, pero hay algo raro en la casa."]), "es");
-    assert.equal(detectLanguage(["What is this? You know that I have it in my car."]), "en");
-    assert.equal(detectLanguage(["Je ne sais pas, mais nous sommes très contents avec vous."]), "fr");
-    assert.equal(detectLanguage(["Eu não sei, você está muito bem agora, obrigado."]), "pt");
-    assert.equal(detectLanguage(["Ciao, che cosa questo? Sono molto contento, grazie."]), "it");
-    assert.equal(detectLanguage(["Ich bin nicht sicher, aber wir sind auf dem Weg und das ist gut."]), "de");
-  });
-
-  test("sin evidencia suficiente o ambigua devuelve null", () => {
-    assert.equal(detectLanguage(["OK"]), null);
-    assert.equal(detectLanguage([]), null);
-    assert.equal(detectLanguage(["la casa"]), null, "un solo indicio no basta");
-    assert.equal(detectLanguage(["the car, el coche"]), null, "empate entre idiomas");
-  });
-
-  test("archivo corto: 2 indicios bastan si ningún otro idioma tiene ninguno", () => {
-    assert.equal(detectLanguage(["Primera línea del diálogo", "La línea final"]), "es");
-  });
-
-  test("fixture en español (Latin-1)", () => {
-    const cues = parseSRT(decodeSubtitleBuffer(fixture("latin1-windows1252.srt")));
-    // Muy poco texto: aun así no debe confundirse con otro idioma.
-    assert.notEqual(detectLanguage(cues.map((c) => c.text)), "en");
   });
 });
